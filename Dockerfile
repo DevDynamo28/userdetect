@@ -15,22 +15,23 @@ RUN apk add --no-cache \
     freetype-dev \
     libjpeg-turbo-dev \
     libpng-dev \
-    libzip-dev
+    libzip-dev \
+    linux-headers
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
-        pdo \
-        pdo_pgsql \
-        pgsql \
-        mbstring \
-        bcmath \
-        opcache \
-        intl \
-        zip \
-        gd \
-        pcntl \
-        sockets
+    pdo \
+    pdo_pgsql \
+    pgsql \
+    mbstring \
+    bcmath \
+    opcache \
+    intl \
+    zip \
+    gd \
+    pcntl \
+    sockets
 
 # Install Redis extension
 RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
