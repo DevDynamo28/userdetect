@@ -7,16 +7,12 @@ return [
     |--------------------------------------------------------------------------
     */
     'methods' => [
-        'browser_geolocation' => [
+        'signal_fusion' => [
             'enabled' => true,
-            'confidence' => 98,
-            'priority' => 0, // Highest — exact GPS coordinates
-            'cities_database' => storage_path('data/indian_cities.json'),
+            'priority' => 0,
         ],
         'local_geoip' => [
             'enabled' => true,
-            'confidence' => 92,
-            'priority' => 0, // Highest priority — local database
             'database_path' => storage_path('geoip/GeoLite2-City.mmdb'),
             'maxmind_license_key' => env('MAXMIND_LICENSE_KEY', ''),
         ],
@@ -99,6 +95,23 @@ return [
         'ip_range_cidr_mask' => 24,
         'min_samples_for_active' => 10,
         'min_success_rate' => 70,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Signal Weights (for fusion engine)
+    |--------------------------------------------------------------------------
+    | Higher weight = more influence on the final location prediction.
+    */
+    'signal_weights' => [
+        'cloudflare' => 50,
+        'fingerprint_history' => 40,
+        'language_inference' => 25,
+        'ip_ensemble' => 20,
+        'local_geoip' => 18,
+        'reverse_dns' => 15,
+        'network_signals' => 10,
+        'font_detection' => 8,
     ],
 
     /*

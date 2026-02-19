@@ -14,10 +14,7 @@ use Illuminate\Support\Str;
 class DetectionService
 {
     public function __construct(
-        private ReverseGeocodeService $reverseGeocode,
-        private LocalGeoIPService $localGeoIP,
-        private ReverseDNSService $reverseDNS,
-        private EnsembleIPService $ensembleIP,
+        private SignalFusionService $signalFusion,
         private VPNDetectionService $vpnDetection,
         private FingerprintLearningService $learning,
     ) {
@@ -46,17 +43,6 @@ class DetectionService
             }
         }
 
-        // Get reverse DNS
-        $hostname = null;
-        try {
-            $hostname = gethostbyaddr($ip);
-            if ($hostname === $ip) {
-                $hostname = null; // gethostbyaddr returns IP if lookup fails
-            }
-        } catch (\Throwable $e) {
-            Log::channel('detection')->warning("Reverse DNS lookup failed for {$ip}: {$e->getMessage()}");
-        }
-
         // STEP 2: Check fingerprint history
         $fingerprint = null;
         $isNewUser = true;
@@ -73,76 +59,17 @@ class DetectionService
         // STEP 3: Check learned IP ranges
         $learnedResult = $this->learning->checkIPRangeLearnings($ip);
 
-        // STEP 3.5: HIGHEST PRIORITY — Browser GPS Geolocation
-        $detectedCity = null;
-        $detectedState = null;
-        $confidence = 0;
-        $method = 'unknown';
-        $ensembleData = null;
-        $ensembleResult = [];
-        $localGeoResult = null;
-        $geoLocation = $signals['geolocation'] ?? null;
+        // STEP 4: SIGNAL FUSION — combine ALL passive signals
+        $fusionResult = $this->signalFusion->inferLocation($ip, $signals, $request);
 
-        if ($geoLocation && !empty($geoLocation['latitude']) && !empty($geoLocation['longitude'])) {
-            $gpsResult = $this->reverseGeocode->reverseGeocode(
-                (float) $geoLocation['latitude'],
-                (float) $geoLocation['longitude']
-            );
+        $detectedCity = $fusionResult['city'];
+        $detectedState = $fusionResult['state'];
+        $confidence = $fusionResult['confidence'];
+        $method = $fusionResult['method'];
+        $ensembleResult = $fusionResult;
+        $ensembleData = $fusionResult['sources_data'] ?? null;
 
-            if ($gpsResult && !empty($gpsResult['city'])) {
-                $detectedCity = $gpsResult['city'];
-                $detectedState = $gpsResult['state'];
-                $confidence = $gpsResult['confidence'];
-                $method = 'browser_geolocation';
-                $localGeoResult = $gpsResult; // Use GPS coords for response
-                Log::channel('detection')->info(
-                    "GPS detection: {$detectedCity}, {$detectedState} " .
-                    "(confidence: {$confidence}, distance: {$gpsResult['distance_km']}km)"
-                );
-            }
-        }
-
-        // STEP 4: LOCAL GEOIP — Only if no GPS result
-        if (!$detectedCity && $this->localGeoIP->isAvailable()) {
-            $localGeoResult = $this->localGeoIP->lookup($ip);
-            if ($localGeoResult && !empty($localGeoResult['city'])) {
-                $detectedCity = $localGeoResult['city'];
-                $detectedState = $localGeoResult['state'];
-                $confidence = $localGeoResult['confidence'];
-                $method = 'local_geoip';
-                Log::channel('detection')->info("Local GeoIP hit: {$detectedCity}, {$detectedState} (confidence: {$confidence})");
-            }
-        }
-
-        // STEP 5: FALLBACK — Reverse DNS Parsing (only if no local GeoIP result)
-        if (!$detectedCity) {
-            $dnsResult = $this->reverseDNS->extractCity($hostname);
-            if ($dnsResult) {
-                $detectedCity = $dnsResult['city'];
-                $detectedState = $dnsResult['state'];
-                $confidence = $dnsResult['confidence'];
-                $method = 'reverse_dns';
-            }
-        }
-
-        // STEP 6: LAST RESORT — Ensemble IP APIs (only if still no result)
-        if (!$detectedCity || $confidence < 70) {
-            $ensembleResult = $this->ensembleIP->lookup($ip);
-            $ensembleData = $ensembleResult['sources_data'] ?? null;
-
-            if (!$detectedCity && $ensembleResult['city']) {
-                $detectedCity = $ensembleResult['city'];
-                $detectedState = $ensembleResult['state'];
-                $confidence = $ensembleResult['confidence'];
-                $method = 'ensemble_ip';
-            } elseif (!$detectedCity && $ensembleResult['state']) {
-                $detectedState = $ensembleResult['state'];
-                $confidence = $ensembleResult['confidence'];
-                $method = 'ensemble_ip';
-            }
-        }
-
-        // Use learned data if nothing else worked
+        // Use learned data if fusion didn't produce a city
         if (!$detectedCity && $learnedResult) {
             $detectedCity = $learnedResult['city'];
             $detectedState = $learnedResult['state'];
@@ -150,8 +77,16 @@ class DetectionService
             $method = 'ip_range_learning';
         }
 
-        // STEP 6: VPN Detection
-        $asn = $ensembleResult['asn'] ?? null;
+        // STEP 5: VPN Detection
+        $asn = $fusionResult['asn'] ?? null;
+        $hostname = null;
+        try {
+            $hostname = gethostbyaddr($ip);
+            if ($hostname === $ip)
+                $hostname = null;
+        } catch (\Throwable $e) {
+        }
+
         $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname);
 
         if ($vpnResult['is_vpn']) {
@@ -243,8 +178,8 @@ class DetectionService
                 'country' => 'India',
                 'confidence' => $confidence,
                 'method' => $method,
-                'latitude' => $localGeoResult['latitude'] ?? $ensembleResult['latitude'] ?? null,
-                'longitude' => $localGeoResult['longitude'] ?? $ensembleResult['longitude'] ?? null,
+                'latitude' => $fusionResult['latitude'] ?? null,
+                'longitude' => $fusionResult['longitude'] ?? null,
                 'note' => $confidence < 55 ? 'Low confidence - state-level only' : null,
             ],
             'alternatives' => $recommendation ? $alternatives : [],
