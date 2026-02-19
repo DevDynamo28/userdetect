@@ -21,8 +21,13 @@ export default {
         // Extract Cloudflare's geolocation data from request.cf
         const cf = request.cf || {};
 
-        // Clone headers and inject geo data
+        // Clone headers
         const headers = new Headers(request.headers);
+
+        // Fix for 1101 Error: Host header mismatch
+        // When ORIGIN_URL is an IP, we must remove the domain Host header
+        headers.delete('Host');
+        headers.set('X-Forwarded-Host', url.hostname);
 
         // Inject Cloudflare geo headers
         if (cf.city) headers.set('X-CF-City', cf.city);

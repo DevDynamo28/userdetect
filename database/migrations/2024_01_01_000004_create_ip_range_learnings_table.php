@@ -9,6 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $driver = DB::connection()->getDriverName();
+
         Schema::create('ip_range_learnings', function (Blueprint $table) {
             $table->uuid('id')->primary();
 
@@ -38,9 +40,18 @@ return new class extends Migration
             $table->index(['sample_count', 'success_rate'], 'idx_confidence');
         });
 
-        // Add CIDR column and GiST index via raw SQL (PostgreSQL-specific)
-        DB::statement('ALTER TABLE ip_range_learnings ADD COLUMN ip_range CIDR NOT NULL DEFAULT \'0.0.0.0/0\'');
-        DB::statement('CREATE INDEX idx_ip_range_learnings_ip_range ON ip_range_learnings USING gist (ip_range inet_ops)');
+        if ($driver === 'pgsql') {
+            // PostgreSQL: native CIDR type + GiST index for subnet containment queries.
+            DB::statement("ALTER TABLE ip_range_learnings ADD COLUMN ip_range CIDR NOT NULL DEFAULT '0.0.0.0/0'");
+            DB::statement('CREATE INDEX idx_ip_range_learnings_ip_range ON ip_range_learnings USING gist (ip_range inet_ops)');
+            return;
+        }
+
+        // SQLite/other engines used in tests: portable fallback column.
+        Schema::table('ip_range_learnings', function (Blueprint $table) {
+            $table->string('ip_range', 50)->default('0.0.0.0/0');
+            $table->index('ip_range', 'idx_ip_range_learnings_ip_range');
+        });
     }
 
     public function down(): void

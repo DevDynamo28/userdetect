@@ -249,7 +249,11 @@ class DetectionService
         $deviceType = 'desktop';
 
         if (!$userAgent) {
-            return compact('browser', 'os', 'device_type');
+            return [
+                'browser' => $browser,
+                'os' => $os,
+                'device_type' => $deviceType,
+            ];
         }
 
         // Browser detection
