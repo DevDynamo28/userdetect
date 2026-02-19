@@ -60,12 +60,20 @@ class EnsembleIPService
                     $normalized = $this->normalizeResponse($source, $response->json());
                     if ($normalized) {
                         $responses[$source] = $normalized;
+                        Log::channel('detection')->info("Ensemble [{$source}] for {$ip}: city={$normalized['city']}, state={$normalized['state']}, lat={$normalized['latitude']}, lng={$normalized['longitude']}");
+                    } else {
+                        Log::channel('detection')->warning("Ensemble [{$source}] for {$ip}: normalized to null (invalid data)");
                     }
+                } else {
+                    $statusCode = $response instanceof \Illuminate\Http\Client\Response ? $response->status() : 'N/A';
+                    Log::channel('detection')->warning("Ensemble [{$source}] for {$ip}: HTTP {$statusCode}");
                 }
             } catch (\Throwable $e) {
                 Log::channel('detection')->warning("Ensemble source {$source} failed for IP {$ip}: {$e->getMessage()}");
             }
         }
+
+        Log::channel('detection')->info("Ensemble for {$ip}: " . count($responses) . '/' . count($sourceKeys) . ' sources responded');
 
         return $this->calculateConsensus($responses, $ip);
     }
@@ -158,7 +166,7 @@ class EnsembleIPService
             'postal' => $data['postal'] ?? null,
             'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
             'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
-            'asn' => $data['connection']['asn'] ?? null,
+            'asn' => isset($data['connection']['asn']) ? 'AS' . $data['connection']['asn'] : null,
             'isp' => $data['connection']['isp'] ?? ($data['isp'] ?? null),
         ];
     }
@@ -177,7 +185,7 @@ class EnsembleIPService
             'postal' => $data['postal'] ?? null,
             'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
             'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
-            'asn' => $data['connection']['asn'] ?? null,
+            'asn' => isset($data['connection']['asn']) ? 'AS' . $data['connection']['asn'] : null,
             'isp' => $data['connection']['isp'] ?? ($data['connection']['org'] ?? null),
         ];
     }
@@ -196,8 +204,8 @@ class EnsembleIPService
             'postal' => $data['zipCode'] ?? null,
             'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
             'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
-            'asn' => null,
-            'isp' => null,
+            'asn' => isset($data['asn']) ? 'AS' . $data['asn'] : null,
+            'isp' => $data['asnOrganization'] ?? null,
         ];
     }
 
@@ -248,6 +256,28 @@ class EnsembleIPService
                 'sources_data' => $sourcesData,
             ]);
         }
+        // STEP 0: State-based outlier detection — penalize sources whose state disagrees with majority
+        $stateVotes = [];
+        foreach ($sourceEntries as $entry) {
+            if (!empty($entry['state'])) {
+                $stateVotes[$entry['state']] = ($stateVotes[$entry['state']] ?? 0) + 1;
+            }
+        }
+        arsort($stateVotes);
+        $majorityState = !empty($stateVotes) ? array_key_first($stateVotes) : null;
+        $majorityStateCount = $majorityState ? $stateVotes[$majorityState] : 0;
+
+        // If majority state has 3+ sources agreeing, penalize outliers
+        if ($majorityState && $majorityStateCount >= 3) {
+            foreach ($sourceEntries as &$entry) {
+                if (!empty($entry['state']) && $entry['state'] !== $majorityState) {
+                    $oldWeight = $entry['weight'];
+                    $entry['weight'] *= 0.3; // Heavy penalty for state mismatch
+                    Log::channel('detection')->info("Ensemble outlier: [{$entry['source']}] state={$entry['state']} disagrees with majority={$majorityState}, weight {$oldWeight}→{$entry['weight']}");
+                }
+            }
+            unset($entry);
+        }
 
         // STEP 1: Geo-cluster sources by lat/lng proximity
         $clusters = $this->buildGeoClusters($sourceEntries);
@@ -259,6 +289,10 @@ class EnsembleIPService
         $city = $this->getMostVotedCity($bestCluster);
         $agreementCount = count($bestCluster);
         $totalSources = count($sourceEntries);
+
+        $clusterSources = array_column($bestCluster, 'source');
+        $clusterCities = array_unique(array_column($bestCluster, 'city'));
+        Log::channel('detection')->info("Ensemble consensus for {$ip}: {$agreementCount}/{$totalSources} sources in best cluster, city={$city}, clusters=" . count($clusters) . ", sources=[" . implode(',', $clusterSources) . "], cities=[" . implode(',', $clusterCities) . "]");
 
         // STEP 4: Calculate confidence based on agreement ratio and source weights
         $totalWeight = array_sum(array_column($bestCluster, 'weight'));
