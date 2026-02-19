@@ -14,6 +14,8 @@ use Illuminate\Support\Str;
 class DetectionService
 {
     public function __construct(
+        private ReverseGeocodeService $reverseGeocode,
+        private LocalGeoIPService $localGeoIP,
         private ReverseDNSService $reverseDNS,
         private EnsembleIPService $ensembleIP,
         private VPNDetectionService $vpnDetection,
@@ -71,22 +73,59 @@ class DetectionService
         // STEP 3: Check learned IP ranges
         $learnedResult = $this->learning->checkIPRangeLearnings($ip);
 
-        // STEP 4: Reverse DNS Parsing (highest priority)
+        // STEP 3.5: HIGHEST PRIORITY — Browser GPS Geolocation
         $detectedCity = null;
         $detectedState = null;
         $confidence = 0;
         $method = 'unknown';
         $ensembleData = null;
+        $ensembleResult = [];
+        $localGeoResult = null;
+        $geoLocation = $signals['geolocation'] ?? null;
 
-        $dnsResult = $this->reverseDNS->extractCity($hostname);
-        if ($dnsResult) {
-            $detectedCity = $dnsResult['city'];
-            $detectedState = $dnsResult['state'];
-            $confidence = $dnsResult['confidence'];
-            $method = 'reverse_dns';
+        if ($geoLocation && !empty($geoLocation['latitude']) && !empty($geoLocation['longitude'])) {
+            $gpsResult = $this->reverseGeocode->reverseGeocode(
+                (float) $geoLocation['latitude'],
+                (float) $geoLocation['longitude']
+            );
+
+            if ($gpsResult && !empty($gpsResult['city'])) {
+                $detectedCity = $gpsResult['city'];
+                $detectedState = $gpsResult['state'];
+                $confidence = $gpsResult['confidence'];
+                $method = 'browser_geolocation';
+                $localGeoResult = $gpsResult; // Use GPS coords for response
+                Log::channel('detection')->info(
+                    "GPS detection: {$detectedCity}, {$detectedState} " .
+                    "(confidence: {$confidence}, distance: {$gpsResult['distance_km']}km)"
+                );
+            }
         }
 
-        // STEP 5: Ensemble IP Geolocation (if no DNS result or low confidence)
+        // STEP 4: LOCAL GEOIP — Only if no GPS result
+        if (!$detectedCity && $this->localGeoIP->isAvailable()) {
+            $localGeoResult = $this->localGeoIP->lookup($ip);
+            if ($localGeoResult && !empty($localGeoResult['city'])) {
+                $detectedCity = $localGeoResult['city'];
+                $detectedState = $localGeoResult['state'];
+                $confidence = $localGeoResult['confidence'];
+                $method = 'local_geoip';
+                Log::channel('detection')->info("Local GeoIP hit: {$detectedCity}, {$detectedState} (confidence: {$confidence})");
+            }
+        }
+
+        // STEP 5: FALLBACK — Reverse DNS Parsing (only if no local GeoIP result)
+        if (!$detectedCity) {
+            $dnsResult = $this->reverseDNS->extractCity($hostname);
+            if ($dnsResult) {
+                $detectedCity = $dnsResult['city'];
+                $detectedState = $dnsResult['state'];
+                $confidence = $dnsResult['confidence'];
+                $method = 'reverse_dns';
+            }
+        }
+
+        // STEP 6: LAST RESORT — Ensemble IP APIs (only if still no result)
         if (!$detectedCity || $confidence < 70) {
             $ensembleResult = $this->ensembleIP->lookup($ip);
             $ensembleData = $ensembleResult['sources_data'] ?? null;
@@ -101,10 +140,6 @@ class DetectionService
                 $confidence = $ensembleResult['confidence'];
                 $method = 'ensemble_ip';
             }
-        } else {
-            // Still get ensemble data for ISP/ASN info
-            $ensembleResult = $this->ensembleIP->lookup($ip);
-            $ensembleData = $ensembleResult['sources_data'] ?? null;
         }
 
         // Use learned data if nothing else worked
@@ -208,8 +243,8 @@ class DetectionService
                 'country' => 'India',
                 'confidence' => $confidence,
                 'method' => $method,
-                'latitude' => $ensembleResult['latitude'] ?? null,
-                'longitude' => $ensembleResult['longitude'] ?? null,
+                'latitude' => $localGeoResult['latitude'] ?? $ensembleResult['latitude'] ?? null,
+                'longitude' => $localGeoResult['longitude'] ?? $ensembleResult['longitude'] ?? null,
                 'note' => $confidence < 55 ? 'Low confidence - state-level only' : null,
             ],
             'alternatives' => $recommendation ? $alternatives : [],

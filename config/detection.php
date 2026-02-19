@@ -7,6 +7,19 @@ return [
     |--------------------------------------------------------------------------
     */
     'methods' => [
+        'browser_geolocation' => [
+            'enabled' => true,
+            'confidence' => 98,
+            'priority' => 0, // Highest — exact GPS coordinates
+            'cities_database' => storage_path('data/indian_cities.json'),
+        ],
+        'local_geoip' => [
+            'enabled' => true,
+            'confidence' => 92,
+            'priority' => 0, // Highest priority — local database
+            'database_path' => storage_path('geoip/GeoLite2-City.mmdb'),
+            'maxmind_license_key' => env('MAXMIND_LICENSE_KEY', ''),
+        ],
         'reverse_dns' => [
             'enabled' => true,
             'confidence' => 88,
