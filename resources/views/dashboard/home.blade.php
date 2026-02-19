@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const confDist = @json($confidenceDistribution);
 
     // API Calls Line Chart
-    new Chart(document.getElementById('callsChart'), {
+    const callsEl = document.getElementById('callsChart');
+    if (callsEl) new Chart(callsEl, {
         type: 'line',
         data: {
             labels: Object.keys(chartData),
@@ -121,7 +122,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const cityCounts = topCities.map(c => c.count);
     const cityColors = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe'];
 
-    new Chart(document.getElementById('citiesChart'), {
+    const citiesEl = document.getElementById('citiesChart');
+    if (citiesEl) new Chart(citiesEl, {
         type: 'doughnut',
         data: {
             labels: cityLabels,
@@ -139,7 +141,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Confidence Distribution Bar Chart
-    new Chart(document.getElementById('confidenceChart'), {
+    const confEl = document.getElementById('confidenceChart');
+    if (confEl) new Chart(confEl, {
         type: 'bar',
         data: {
             labels: ['High (80-100)', 'Medium (60-79)', 'Low (0-59)'],

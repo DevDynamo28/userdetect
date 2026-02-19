@@ -35,7 +35,7 @@ Route::get('/health', function () {
     return response()->json([
         'status' => 'ok',
         'service' => 'UserDetect API',
-        'domain' => 'devdemosite.live',
+        'domain' => parse_url(config('app.url'), PHP_URL_HOST) ?? 'unknown',
         'slo_target_ms' => (int) config('detection.slo.detect_p95_ms', 700),
         'timestamp' => now()->toIso8601String(),
     ]);

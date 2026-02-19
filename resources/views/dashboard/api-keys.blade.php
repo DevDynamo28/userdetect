@@ -16,7 +16,7 @@
             <p class="text-sm font-medium mb-2">New API Key Generated - Copy it now! It won't be shown again in full.</p>
             <div class="flex items-center gap-2">
                 <code class="bg-yellow-100 px-3 py-1 rounded text-sm font-mono break-all">{{ session('new_key') }}</code>
-                <button onclick="navigator.clipboard.writeText('{{ session('new_key') }}')"
+                <button x-data @click="navigator.clipboard.writeText(@js(session('new_key'))).then(() => $el.textContent = 'Copied!').catch(() => $el.textContent = 'Failed')"
                         class="px-3 py-1 bg-yellow-200 text-yellow-900 rounded text-sm hover:bg-yellow-300">
                     Copy
                 </button>
@@ -46,7 +46,7 @@
                         <span x-text="revealed ? 'Hide' : 'Reveal'"></span>
                     </button>
                 </div>
-                <button onclick="navigator.clipboard.writeText('{{ $client->api_key }}')"
+                <button x-data @click="navigator.clipboard.writeText(@js($client->api_key)).then(() => $el.textContent = 'Copied!').catch(() => $el.textContent = 'Failed')"
                         class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition whitespace-nowrap">
                     Copy
                 </button>
@@ -77,9 +77,9 @@
     </div>
 
     {{-- Regenerate Confirmation Modal --}}
-    <div x-show="confirmRegenerate" x-cloak class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div x-show="confirmRegenerate" x-cloak @keydown.escape.window="confirmRegenerate = false" role="dialog" aria-modal="true" aria-labelledby="regenerate-title" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4" @click.outside="confirmRegenerate = false">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Regenerate API Key?</h3>
+            <h3 id="regenerate-title" class="text-lg font-semibold text-gray-900 mb-2">Regenerate API Key?</h3>
             <p class="text-sm text-gray-600 mb-4">This will invalidate your current API key. All integrations using the old key will stop working immediately.</p>
             <div class="flex gap-3 justify-end">
                 <button @click="confirmRegenerate = false" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">Cancel</button>
@@ -92,9 +92,9 @@
     </div>
 
     {{-- Revoke Confirmation Modal --}}
-    <div x-show="confirmRevoke" x-cloak class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div x-show="confirmRevoke" x-cloak @keydown.escape.window="confirmRevoke = false" role="dialog" aria-modal="true" aria-labelledby="revoke-title" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4" @click.outside="confirmRevoke = false">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Revoke API Key?</h3>
+            <h3 id="revoke-title" class="text-lg font-semibold text-gray-900 mb-2">Revoke API Key?</h3>
             <p class="text-sm text-gray-600 mb-4">This will permanently revoke the current key and generate a new one. All integrations will need to be updated.</p>
             <div class="flex gap-3 justify-end">
                 <button @click="confirmRevoke = false" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">Cancel</button>

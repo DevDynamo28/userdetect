@@ -11,11 +11,16 @@ class ClientSeeder extends Seeder
 {
     public function run(): void
     {
+        if (app()->environment('production')) {
+            $this->command->warn('Skipping ClientSeeder in production environment.');
+            return;
+        }
+
         // Test client
         Client::create([
             'company_name' => 'Test Company',
             'email' => 'test@example.com',
-            'password' => 'password',
+            'password' => Hash::make(Str::random(32)),
             'api_key' => 'sk_test_' . Str::random(56),
             'api_secret' => Hash::make(Str::random(64)),
             'allowed_domains' => ['localhost', '127.0.0.1'],
@@ -28,7 +33,7 @@ class ClientSeeder extends Seeder
         Client::create([
             'company_name' => 'Demo Corp',
             'email' => 'demo@example.com',
-            'password' => 'password',
+            'password' => Hash::make(Str::random(32)),
             'api_key' => 'sk_demo_' . Str::random(56),
             'api_secret' => Hash::make(Str::random(64)),
             'allowed_domains' => null,

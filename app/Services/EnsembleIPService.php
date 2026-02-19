@@ -478,14 +478,19 @@ class EnsembleIPService
             return [];
         }
 
-        // Select cluster with highest total weight
-        usort($clusters, function ($a, $b) {
-            $weightA = array_sum(array_column($a, 'weight'));
-            $weightB = array_sum(array_column($b, 'weight'));
-            return $weightB <=> $weightA;
-        });
+        // Select cluster with highest total weight (pre-calculate to avoid redundant sums)
+        $bestCluster = $clusters[0];
+        $bestWeight = array_sum(array_column($clusters[0], 'weight'));
 
-        return $clusters[0];
+        for ($i = 1; $i < count($clusters); $i++) {
+            $weight = array_sum(array_column($clusters[$i], 'weight'));
+            if ($weight > $bestWeight) {
+                $bestWeight = $weight;
+                $bestCluster = $clusters[$i];
+            }
+        }
+
+        return $bestCluster;
     }
 
     /**

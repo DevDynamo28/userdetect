@@ -78,7 +78,7 @@ class ReverseDNSService
         // Pune
         'pune' => 'Pune', 'pun' => 'Pune', 'poona' => 'Pune',
         // Surat
-        'surat' => 'Surat', 'srt' => 'Surat', 'srt' => 'Surat',
+        'surat' => 'Surat', 'srt' => 'Surat',
         // Jaipur
         'jaipur' => 'Jaipur', 'jai' => 'Jaipur', 'jpr' => 'Jaipur',
         // Lucknow

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -21,11 +22,16 @@ class ApiRateLimiter
         $key = "ratelimit:{$client->id}:" . now()->format('Y-m-d-H-i');
 
         try {
-            $current = Redis::incr($key);
+            // Atomic incr + expire using Lua script to prevent race condition
+            $luaScript = <<<'LUA'
+                local current = redis.call('incr', KEYS[1])
+                if current == 1 then
+                    redis.call('expire', KEYS[1], 60)
+                end
+                return current
+            LUA;
 
-            if ($current === 1) {
-                Redis::expire($key, 60);
-            }
+            $current = Redis::eval($luaScript, 1, $key);
 
             if ($current > $limit) {
                 $retryAfter = 60 - now()->second;
@@ -53,8 +59,15 @@ class ApiRateLimiter
                 'X-RateLimit-Reset' => now()->addSeconds(60 - now()->second)->timestamp,
             ]);
         } catch (\Throwable $e) {
-            // If Redis is down, allow the request through (fail-open)
-            return $next($request);
+            // If Redis is down, log and allow the request through with a warning header
+            Log::warning('Rate limiter unavailable, failing open', ['error' => $e->getMessage()]);
+
+            $response = $next($request);
+
+            return $response->withHeaders([
+                'X-RateLimit-Limit' => $limit,
+                'X-RateLimit-Remaining' => 'unknown',
+            ]);
         }
     }
 }

@@ -81,9 +81,10 @@ RUN chown -R www-data:www-data /var/www/html \
     && mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache storage/geoip storage/data
 
 # Optimize Laravel
-RUN php artisan config:cache || true \
-    && php artisan route:cache || true \
-    && php artisan view:cache || true
+RUN set -e \
+    && php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
 
 EXPOSE 80
 

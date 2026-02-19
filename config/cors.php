@@ -5,7 +5,9 @@ return [
 
     'allowed_methods' => ['GET', 'POST', 'OPTIONS'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => env('CORS_ALLOWED_ORIGINS', '*') === '*'
+        ? ['*']
+        : array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', '')))),
 
     'allowed_origins_patterns' => [],
 

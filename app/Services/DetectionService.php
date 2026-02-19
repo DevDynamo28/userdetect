@@ -66,7 +66,6 @@ class DetectionService
         $detectedState = $fusionResult['state'];
         $confidence = $fusionResult['confidence'];
         $method = $fusionResult['method'];
-        $ensembleResult = $fusionResult;
         $ensembleData = $fusionResult['sources_data'] ?? null;
 
         // Use learned data if fusion didn't produce a city
@@ -118,7 +117,7 @@ class DetectionService
 
         if ($confidence < 55 || !$detectedCity) {
             $recommendation = 'soft_prompt';
-            $alternatives = $ensembleResult['alternatives'] ?? [];
+            $alternatives = $fusionResult['alternatives'] ?? [];
             if ($confidence < 55) {
                 $detectedCity = null; // Only return state-level for low confidence
             }
@@ -138,38 +137,47 @@ class DetectionService
             ]);
         }
 
-        $detection = $this->saveDetection($client, [
-            'fingerprint_id' => $fingerprintId ?? 'unknown',
-            'session_id' => $signals['session_id'] ?? null,
-            'detected_city' => $detectedCity,
-            'detected_state' => $detectedState,
-            'detected_country' => 'India',
-            'confidence' => $confidence,
-            'detection_method' => $method,
-            'is_vpn' => $vpnResult['is_vpn'],
-            'vpn_confidence' => $vpnResult['confidence'],
-            'vpn_indicators' => $vpnResult['indicators'],
-            'ip_address' => $ip,
-            'reverse_dns' => $hostname,
-            'isp' => $ensembleResult['isp'] ?? null,
-            'asn' => $asn,
-            'connection_type' => $ensembleResult['connection_type'] ?? 'unknown',
-            'user_agent' => $userAgent,
-            'browser' => $browserInfo['browser'],
-            'os' => $browserInfo['os'],
-            'device_type' => $browserInfo['device_type'],
-            'timezone' => $signals['timezone'] ?? null,
-            'language' => $signals['language'] ?? null,
-            'ip_sources_data' => $ensembleData,
-            'processing_time_ms' => $processingTime,
-        ]);
+        $detection = null;
 
-        // STEP 10: Update fingerprint
-        if ($fingerprintId) {
-            $this->updateFingerprint($client, $fingerprintId, $detectedCity, $detectedState, $signals);
-        }
+        DB::transaction(function () use (
+            $client, $fingerprintId, $signals, $detectedCity, $detectedState,
+            $confidence, $method, $vpnResult, $ip, $hostname, $fusionResult,
+            $asn, $ensembleData, $userAgent, $browserInfo, $processingTime,
+            &$detection
+        ) {
+            $detection = $this->saveDetection($client, [
+                'fingerprint_id' => $fingerprintId ?? 'unknown',
+                'session_id' => $signals['session_id'] ?? null,
+                'detected_city' => $detectedCity,
+                'detected_state' => $detectedState,
+                'detected_country' => 'India',
+                'confidence' => $confidence,
+                'detection_method' => $method,
+                'is_vpn' => $vpnResult['is_vpn'],
+                'vpn_confidence' => $vpnResult['confidence'],
+                'vpn_indicators' => $vpnResult['indicators'],
+                'ip_address' => $ip,
+                'reverse_dns' => $hostname,
+                'isp' => $fusionResult['isp'] ?? null,
+                'asn' => $asn,
+                'connection_type' => $fusionResult['connection_type'] ?? 'unknown',
+                'user_agent' => $userAgent,
+                'browser' => $browserInfo['browser'],
+                'os' => $browserInfo['os'],
+                'device_type' => $browserInfo['device_type'],
+                'timezone' => $signals['timezone'] ?? null,
+                'language' => $signals['language'] ?? null,
+                'ip_sources_data' => $ensembleData,
+                'processing_time_ms' => $processingTime,
+            ]);
 
-        // STEP 11: Self-learning (async)
+            // Update fingerprint within the same transaction
+            if ($fingerprintId) {
+                $this->updateFingerprint($client, $fingerprintId, $detectedCity, $detectedState, $signals);
+            }
+        });
+
+        // Self-learning (async, outside transaction)
         if ($detection && $confidence >= config('detection.learning.min_confidence_to_learn', 80)) {
             LearnFromDetection::dispatch($detection);
         }
