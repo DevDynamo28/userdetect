@@ -34,12 +34,21 @@ class DetectionService
         $fingerprintId = $signals['fingerprint'] ?? null;
         $userAgent = $signals['user_agent'] ?? $request->userAgent();
 
-        // In local/testing, allow IP override via X-Test-IP header or .env
-        if (app()->environment('local', 'testing') && $this->isPrivateIP($ip)) {
-            $testIp = $request->header('X-Test-IP') ?? env('TEST_IP');
-            if ($testIp) {
+        // Allow IP override via X-Test-IP header for testing
+        // Works in local/testing env, or in production only for admin clients
+        $testIp = $request->header('X-Test-IP');
+        if ($testIp && filter_var($testIp, FILTER_VALIDATE_IP)) {
+            $allowOverride = app()->environment('local', 'testing')
+                || $client->plan_type === 'admin';
+            if ($allowOverride) {
                 $ip = $testIp;
                 Log::channel('detection')->info("Using test IP override: {$ip}");
+            }
+        } elseif (app()->environment('local', 'testing') && $this->isPrivateIP($ip)) {
+            $envTestIp = config('detection.test_ip');
+            if ($envTestIp) {
+                $ip = $envTestIp;
+                Log::channel('detection')->info("Using env test IP: {$ip}");
             }
         }
 

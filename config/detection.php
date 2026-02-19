@@ -125,10 +125,14 @@ return [
     | Rate Limits (requests per minute)
     |--------------------------------------------------------------------------
     */
+    // Test IP override (for local/testing environments)
+    'test_ip' => env('TEST_IP'),
+
     'rate_limits' => [
         'free' => (int) env('API_RATE_LIMIT_PER_MINUTE', 100),
         'starter' => 500,
         'growth' => 2000,
+        'admin' => 10000,
     ],
 
     /*
