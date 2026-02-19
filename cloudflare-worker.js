@@ -16,7 +16,7 @@ export default {
         const url = new URL(request.url);
 
         // Build origin URL — forward to your Laravel backend
-        const originUrl = (env.ORIGIN_URL || url.origin) + url.pathname + url.search;
+        const originUrl = (env.ORIGIN_URL || 'https://devdemosite.live') + url.pathname + url.search;
 
         // Extract Cloudflare's geolocation data from request.cf
         const cf = request.cf || {};

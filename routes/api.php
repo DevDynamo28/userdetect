@@ -29,3 +29,13 @@ Route::prefix('v1')->middleware(['api.key', 'api.rate'])->group(function () {
     // Domain verification
     Route::post('/client/verify-domain', [ClientController::class, 'verifyDomain']);
 });
+
+// Health check (no auth required)
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'service' => 'UserDetect API',
+        'domain' => 'devdemosite.live',
+        'timestamp' => now()->toIso8601String(),
+    ]);
+});
