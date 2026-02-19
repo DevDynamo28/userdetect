@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UserDetect SDK - Test Page</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f8f9fa; }
+        h1 { color: #1a1a2e; }
+        .card { background: #fff; border-radius: 8px; padding: 24px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .value { font-size: 20px; font-weight: 600; color: #1a1a2e; margin-top: 4px; }
+        pre { background: #1a1a2e; color: #a5d6a7; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+        .btn { background: #6366f1; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #4f46e5; }
+        .status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .status-success { background: #dcfce7; color: #166534; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        .status-loading { background: #fef9c3; color: #854d0e; }
+        #result { display: none; }
+    </style>
+</head>
+<body>
+    <h1>UserDetect SDK Test</h1>
+    <p>This page tests the UserDetect SDK integration. Enter your API key and click Detect.</p>
+
+    <div class="card">
+        <div class="label">API Key</div>
+        <input type="text" id="apiKeyInput" placeholder="sk_test_..." style="width: 100%; padding: 8px; margin-top: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;">
+        <br><br>
+        <button class="btn" onclick="runDetection()">Run Detection</button>
+        <span id="statusBadge" class="status" style="display: none; margin-left: 12px;"></span>
+    </div>
+
+    <div id="result">
+        <div class="card" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+            <div>
+                <div class="label">City</div>
+                <div class="value" id="city">-</div>
+            </div>
+            <div>
+                <div class="label">State</div>
+                <div class="value" id="state">-</div>
+            </div>
+            <div>
+                <div class="label">Confidence</div>
+                <div class="value" id="confidence">-</div>
+            </div>
+            <div>
+                <div class="label">Method</div>
+                <div class="value" id="method">-</div>
+            </div>
+            <div>
+                <div class="label">VPN Detected</div>
+                <div class="value" id="vpn">-</div>
+            </div>
+            <div>
+                <div class="label">New User</div>
+                <div class="value" id="newUser">-</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label">Full Response</div>
+            <pre id="fullResponse"></pre>
+        </div>
+    </div>
+
+    <script src="/sdk/userdetect.min.js"></script>
+    <script>
+        function runDetection() {
+            var apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) {
+                alert('Please enter an API key');
+                return;
+            }
+
+            var badge = document.getElementById('statusBadge');
+            badge.style.display = 'inline-block';
+            badge.className = 'status status-loading';
+            badge.textContent = 'Detecting...';
+
+            UserDetect.init(apiKey, function(data) {
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('fullResponse').textContent = JSON.stringify(data, null, 2);
+
+                if (data.success) {
+                    badge.className = 'status status-success';
+                    badge.textContent = 'Success';
+                    document.getElementById('city').textContent = data.location.city || 'Unknown';
+                    document.getElementById('state').textContent = data.location.state || 'Unknown';
+                    document.getElementById('confidence').textContent = data.location.confidence + '%';
+                    document.getElementById('method').textContent = data.location.method;
+                    document.getElementById('vpn').textContent = data.vpn_detection.is_vpn ? 'Yes' : 'No';
+                    document.getElementById('newUser').textContent = data.is_new_user ? 'Yes' : 'No';
+                } else {
+                    badge.className = 'status status-error';
+                    badge.textContent = 'Error';
+                    document.getElementById('city').textContent = '-';
+                    document.getElementById('state').textContent = '-';
+                    document.getElementById('confidence').textContent = '-';
+                }
+            }, {
+                debug: true,
+                autoDetect: true
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1363 @@
+
+---
+
+# USER LOCATION DETECTION API - MVP SPECIFICATION
+
+## PROJECT OVERVIEW
+
+Build a B2B SaaS platform that detects user location (city/state level) in India through multi-signal analysis. Clients integrate a JavaScript SDK into their websites, which sends user signals to our API, and receives location data with confidence scores.
+
+**Target Accuracy:** 70-85% first visit, 85-90% after multiple visits
+**Tech Stack:** Laravel (Backend API), PostgreSQL (Database), Vanilla JavaScript (SDK), Blade/React (Dashboard)
+**Timeline:** 2 weeks MVP
+**Cost:** Free tier APIs + Single server
+
+---
+
+## CORE FUNCTIONALITY
+
+### What the System Does:
+
+1. **Client Integration:** Clients add our SDK to their website
+2. **Signal Collection:** SDK collects browser signals (fingerprint, timezone, language, etc.)
+3. **Detection:** API uses 4 detection methods to determine location
+4. **Learning:** System improves accuracy over time by learning IP patterns
+5. **Response:** Returns location + confidence + VPN status to client
+
+### Detection Methods (Priority Order):
+
+1. **Reverse DNS Parsing** - Extract city from hostname (85-90% accurate when available)
+2. **Ensemble IP Geolocation** - Query 4 free APIs, weighted voting (70-80% accurate)
+3. **Fingerprint History** - Check if returning user (90%+ for known users)
+4. **VPN Detection** - Datacenter ASN + reverse DNS patterns (80-85% accurate)
+
+---
+
+## PROJECT STRUCTURE
+
+```
+project-root/
+├── backend/                    # Laravel API
+│   ├── app/
+│   │   ├── Http/
+│   │   │   ├── Controllers/
+│   │   │   │   ├── API/
+│   │   │   │   │   ├── DetectionController.php
+│   │   │   │   │   ├── ClientController.php
+│   │   │   │   │   └── AnalyticsController.php
+│   │   │   │   └── Dashboard/
+│   │   │   │       └── DashboardController.php
+│   │   │   └── Middleware/
+│   │   │       ├── ValidateApiKey.php
+│   │   │       └── RateLimiter.php
+│   │   ├── Models/
+│   │   │   ├── Client.php
+│   │   │   ├── UserFingerprint.php
+│   │   │   └── UserDetection.php
+│   │   └── Services/
+│   │       ├── DetectionService.php
+│   │       ├── EnsembleIPService.php
+│   │       ├── ReverseDNSService.php
+│   │       ├── VPNDetectionService.php
+│   │       └── FingerprintLearningService.php
+│   ├── database/
+│   │   └── migrations/
+│   ├── routes/
+│   │   ├── api.php
+│   │   └── web.php
+│   ├── config/
+│   └── .env
+│
+├── sdk/                        # JavaScript SDK
+│   ├── src/
+│   │   ├── index.js           # Main SDK entry
+│   │   ├── fingerprint.js     # Fingerprint generation
+│   │   ├── signals.js         # Signal collection
+│   │   └── api-client.js      # API communication
+│   └── dist/
+│       └── userdetect.min.js  # Compiled SDK
+│
+├── dashboard/                  # Client Dashboard
+│   ├── resources/
+│   │   ├── views/             # Blade templates OR
+│   │   └── js/                # React components
+│   └── public/
+│
+└── docs/
+    ├── API.md                 # API documentation
+    └── INTEGRATION.md         # Client integration guide
+```
+
+---
+
+## DATABASE SCHEMA
+
+### Table 1: `clients`
+
+Stores B2B customer information.
+
+```sql
+CREATE TABLE clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    api_key VARCHAR(64) UNIQUE NOT NULL,
+    api_secret VARCHAR(64) NOT NULL,
+    
+    -- Configuration
+    allowed_domains TEXT[], -- ['example.com', 'www.example.com']
+    webhook_url VARCHAR(500) NULL,
+    
+    -- Status
+    status VARCHAR(20) DEFAULT 'active', -- active, suspended, trial
+    plan_type VARCHAR(20) DEFAULT 'free', -- free, starter, growth
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_api_call TIMESTAMP NULL,
+    
+    -- Indexes
+    INDEX idx_api_key (api_key),
+    INDEX idx_status (status)
+);
+```
+
+### Table 2: `user_fingerprints`
+
+Stores unique user identity and learned patterns.
+
+```sql
+CREATE TABLE user_fingerprints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    fingerprint_id VARCHAR(64) UNIQUE NOT NULL,
+    
+    -- Visit tracking
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    visit_count INTEGER DEFAULT 1,
+    
+    -- Learned patterns (improves over time)
+    typical_city VARCHAR(100) NULL,
+    typical_state VARCHAR(100) NULL,
+    typical_country VARCHAR(100) DEFAULT 'India',
+    
+    -- Visit distribution (JSONB for flexibility)
+    city_visit_counts JSONB DEFAULT '{}'::jsonb, 
+    -- Example: {"Ahmedabad": 15, "Mumbai": 2}
+    
+    state_visit_counts JSONB DEFAULT '{}'::jsonb,
+    -- Example: {"Gujarat": 17}
+    
+    -- Behavioral confidence (0-100, improves with consistency)
+    trust_score INTEGER DEFAULT 50,
+    
+    -- Most common patterns
+    typical_timezone VARCHAR(50) NULL,
+    typical_language VARCHAR(10) NULL,
+    
+    -- Indexes
+    INDEX idx_client_fingerprint (client_id, fingerprint_id),
+    INDEX idx_fingerprint (fingerprint_id),
+    UNIQUE INDEX idx_client_fingerprint_unique (client_id, fingerprint_id)
+);
+```
+
+### Table 3: `user_detections`
+
+Logs every detection request (for learning and analytics).
+
+```sql
+CREATE TABLE user_detections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    fingerprint_id VARCHAR(64) NOT NULL,
+    session_id VARCHAR(64) NULL,
+    
+    -- Detection results
+    detected_city VARCHAR(100) NULL,
+    detected_state VARCHAR(100) NULL,
+    detected_country VARCHAR(100) DEFAULT 'India',
+    confidence INTEGER NOT NULL, -- 0-100
+    detection_method VARCHAR(50) NOT NULL, 
+    -- 'reverse_dns', 'ensemble_ip', 'fingerprint_history', 'vpn_fallback'
+    
+    -- VPN detection
+    is_vpn BOOLEAN DEFAULT false,
+    vpn_confidence INTEGER DEFAULT 0,
+    vpn_indicators TEXT[], -- ['datacenter_asn', 'vpn_hostname']
+    
+    -- Network details
+    ip_address INET NOT NULL,
+    reverse_dns TEXT NULL,
+    isp VARCHAR(200) NULL,
+    asn VARCHAR(20) NULL,
+    connection_type VARCHAR(20) NULL, -- 'mobile', 'broadband', 'unknown'
+    
+    -- Browser/Device
+    user_agent TEXT NULL,
+    browser VARCHAR(100) NULL,
+    os VARCHAR(100) NULL,
+    device_type VARCHAR(50) NULL, -- 'desktop', 'mobile', 'tablet'
+    
+    -- Signals (store for learning)
+    timezone VARCHAR(50) NULL,
+    language VARCHAR(10) NULL,
+    
+    -- Ensemble results (for debugging)
+    ip_sources_data JSONB NULL,
+    -- Example: {"ipapi": "Ahmedabad", "ip-api": "Ahmedabad", "geoplugin": "Gujarat"}
+    
+    -- Performance
+    processing_time_ms INTEGER NULL,
+    
+    -- Timestamp
+    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Indexes
+    INDEX idx_client (client_id),
+    INDEX idx_fingerprint (fingerprint_id),
+    INDEX idx_client_date (client_id, detected_at),
+    INDEX idx_detection_method (detection_method),
+    INDEX idx_confidence (confidence)
+);
+```
+
+### Table 4: `ip_range_learnings` (Self-Learning)
+
+System learns IP range → City mappings over time.
+
+```sql
+CREATE TABLE ip_range_learnings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    -- IP range (using CIDR notation)
+    ip_range CIDR NOT NULL, -- Example: 203.113.45.0/24
+    
+    -- Learned location
+    learned_city VARCHAR(100) NOT NULL,
+    learned_state VARCHAR(100) NOT NULL,
+    
+    -- Confidence metrics
+    sample_count INTEGER DEFAULT 1, -- How many detections contributed
+    success_rate DECIMAL(5,2) DEFAULT 100.00, -- Consistency percentage
+    average_confidence DECIMAL(5,2) NULL,
+    
+    -- Source info
+    primary_isp VARCHAR(200) NULL,
+    primary_asn VARCHAR(20) NULL,
+    reverse_dns_pattern VARCHAR(500) NULL,
+    
+    -- Quality tracking
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Status
+    is_active BOOLEAN DEFAULT true,
+    
+    -- Indexes
+    INDEX idx_ip_range USING gist(ip_range inet_ops),
+    INDEX idx_city (learned_city),
+    INDEX idx_confidence (sample_count, success_rate)
+);
+```
+
+---
+
+## API ENDPOINTS SPECIFICATION
+
+### Base URL: `https://api.yourplatform.com/v1`
+
+### Authentication
+All API requests require header: `X-API-Key: {client_api_key}`
+
+---
+
+### 1. POST `/v1/detect`
+
+**Primary detection endpoint.**
+
+**Request:**
+```json
+{
+  "signals": {
+    "fingerprint": "abc123def456...",
+    "timezone": "Asia/Kolkata",
+    "timezone_offset": -330,
+    "language": "gu-IN",
+    "languages": ["gu-IN", "hi", "en"],
+    "user_agent": "Mozilla/5.0...",
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "color_depth": 24
+    },
+    "platform": "Win32"
+  },
+  "options": {
+    "return_alternatives": false,
+    "include_debug_info": false
+  }
+}
+```
+
+**Response (Success - 200 OK):**
+```json
+{
+  "success": true,
+  "request_id": "req_abc123",
+  "user_id": "fp_abc123def456",
+  "is_new_user": false,
+  
+  "location": {
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "confidence": 82,
+    "method": "reverse_dns"
+  },
+  
+  "vpn_detection": {
+    "is_vpn": false,
+    "confidence": 90,
+    "indicators": []
+  },
+  
+  "user_history": {
+    "visit_count": 5,
+    "first_seen": "2026-02-10T10:30:00Z",
+    "last_seen": "2026-02-17T14:30:00Z",
+    "trust_score": 75
+  },
+  
+  "timestamp": "2026-02-17T14:30:00Z"
+}
+```
+
+**Response (Low Confidence - 200 OK):**
+```json
+{
+  "success": true,
+  "user_id": "fp_xyz789",
+  "is_new_user": true,
+  
+  "location": {
+    "city": null,
+    "state": "Gujarat",
+    "country": "India",
+    "confidence": 55,
+    "method": "ensemble_ip",
+    "note": "Low confidence - state-level only"
+  },
+  
+  "alternatives": [
+    {"city": "Ahmedabad", "probability": 35},
+    {"city": "Surat", "probability": 28},
+    {"city": "Vadodara", "probability": 22}
+  ],
+  
+  "recommendation": "soft_prompt",
+  
+  "vpn_detection": {...},
+  "timestamp": "2026-02-17T14:30:00Z"
+}
+```
+
+**Response (Error - 401 Unauthorized):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_API_KEY",
+    "message": "API key is invalid or inactive"
+  }
+}
+```
+
+**Response (Error - 429 Too Many Requests):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Rate limit exceeded. Max 100 requests per minute.",
+    "retry_after": 30
+  }
+}
+```
+
+---
+
+### 2. GET `/v1/user/{fingerprint_id}/history`
+
+Get historical data for a user.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "fingerprint_id": "fp_abc123",
+  "visit_count": 15,
+  "first_seen": "2026-01-15T08:00:00Z",
+  "last_seen": "2026-02-17T14:30:00Z",
+  "trust_score": 85,
+  
+  "location_history": [
+    {"city": "Ahmedabad", "count": 13, "percentage": 86.7},
+    {"city": "Mumbai", "count": 2, "percentage": 13.3}
+  ],
+  
+  "typical_patterns": {
+    "timezone": "Asia/Kolkata",
+    "language": "gu-IN",
+    "device_type": "desktop"
+  }
+}
+```
+
+---
+
+### 3. GET `/v1/analytics/summary`
+
+Get usage analytics for client.
+
+**Query Params:** `?period=last_7_days` (last_24_hours, last_7_days, last_30_days)
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "period": "last_7_days",
+  
+  "usage": {
+    "total_requests": 45230,
+    "unique_users": 12450,
+    "average_confidence": 78
+  },
+  
+  "top_cities": [
+    {"city": "Ahmedabad", "count": 8920, "percentage": 19.7},
+    {"city": "Mumbai", "count": 7250, "percentage": 16.0},
+    {"city": "Surat", "count": 5680, "percentage": 12.6}
+  ],
+  
+  "detection_methods": {
+    "reverse_dns": 8450,
+    "ensemble_ip": 32100,
+    "fingerprint_history": 4680
+  },
+  
+  "vpn_stats": {
+    "total_vpn_detected": 3620,
+    "percentage": 8.0
+  },
+  
+  "confidence_distribution": {
+    "high (80-100)": 22100,
+    "medium (60-79)": 18900,
+    "low (0-59)": 4230
+  }
+}
+```
+
+---
+
+### 4. POST `/v1/client/verify-domain`
+
+Verify if request is from allowed domain (CORS).
+
+**Request:**
+```json
+{
+  "domain": "example.com",
+  "origin": "https://example.com"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "domain_allowed": true
+}
+```
+
+---
+
+## JAVASCRIPT SDK SPECIFICATION
+
+### SDK File: `userdetect.min.js`
+
+### Initialization
+```javascript
+UserDetect.init(apiKey, callback, options);
+```
+
+**Parameters:**
+- `apiKey` (string, required): Client's API key
+- `callback` (function, required): Function called with detection result
+- `options` (object, optional): Configuration options
+
+**Options:**
+```javascript
+{
+  apiEndpoint: 'https://api.yourplatform.com/v1',
+  timeout: 10000, // 10 seconds
+  debug: false,
+  autoDetect: true, // Auto-run on init
+  includeDebugInfo: false
+}
+```
+
+### Usage Example
+```javascript
+UserDetect.init('your_api_key_here', function(data) {
+  if (data.success) {
+    console.log('City:', data.location.city);
+    console.log('Confidence:', data.location.confidence);
+    console.log('VPN:', data.vpn_detection.is_vpn);
+    
+    // Use data in your application
+    if (data.location.city === 'Ahmedabad') {
+      showAhmedabadContent();
+    }
+  } else {
+    console.error('Detection failed:', data.error);
+  }
+}, {
+  debug: false
+});
+```
+
+### SDK Methods
+
+#### `UserDetect.detect()`
+Manually trigger detection (if `autoDetect: false`).
+
+Returns: Promise
+
+#### `UserDetect.getUserId()`
+Get current user's fingerprint ID.
+
+Returns: String (fingerprint ID)
+
+#### `UserDetect.getLastDetection()`
+Get cached last detection result.
+
+Returns: Object (detection data)
+
+---
+
+### SDK Internal Functions (What SDK Must Do)
+
+#### 1. Fingerprint Generation
+```
+Generate unique fingerprint from:
+- Canvas fingerprint (draw text/shapes, get hash)
+- WebGL fingerprint (GPU signature)
+- Audio fingerprint (audio oscillator hash)
+- Screen: width, height, colorDepth, pixelRatio
+- Timezone: name and offset
+- Language: primary and list
+- Platform: OS info
+- Fonts: detect installed fonts
+- Plugins: browser plugins
+
+Combine all into SHA-256 hash
+Result: 64-character hex string
+```
+
+#### 2. Signal Collection
+```
+Collect:
+- fingerprint (from above)
+- timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+- timezone_offset: new Date().getTimezoneOffset()
+- language: navigator.language
+- languages: navigator.languages
+- user_agent: navigator.userAgent
+- screen: {width, height, colorDepth, pixelRatio}
+- platform: navigator.platform
+- hardware_concurrency: navigator.hardwareConcurrency
+- device_memory: navigator.deviceMemory
+```
+
+#### 3. API Communication
+```
+Send POST request to /v1/detect
+Headers:
+  - X-API-Key: {apiKey}
+  - Content-Type: application/json
+  - Origin: {window.location.origin}
+  
+Body: {signals: {...}}
+
+Handle response:
+- Success (200): Parse JSON, call callback
+- Error (4xx/5xx): Call callback with error
+- Timeout: Retry once, then fail
+```
+
+---
+
+## DETECTION SERVICE LOGIC
+
+### DetectionService.php - Main Detection Flow
+
+```
+Function: detectLocation($request)
+
+Input: 
+- Request object containing signals from SDK
+- Client ID (from API key)
+- IP address (from request)
+
+Process:
+
+STEP 1: Get IP and basic info
+- Extract IP from request
+- Get reverse DNS: gethostbyaddr($ip)
+- Extract user agent
+
+STEP 2: Check fingerprint history
+- Query user_fingerprints table
+- If exists: Get typical_city, typical_state, trust_score
+- If doesn't exist: Mark as new user
+
+STEP 3: Reverse DNS Parsing (Highest priority)
+- Call ReverseDNSService->extractCity($reverseDNS)
+- If city found:
+  - Confidence: 88
+  - Method: 'reverse_dns'
+  - Return early if confidence acceptable
+
+STEP 4: Ensemble IP Geolocation
+- Call EnsembleIPService->lookup($ip)
+- Queries 4 APIs simultaneously:
+  * ipapi.co
+  * ip-api.com
+  * geoplugin.net
+  * ipwhois.app
+- Weighted voting:
+  * 4 sources agree → confidence 85
+  * 3 sources agree → confidence 75
+  * 2 sources agree → confidence 65
+  * No agreement → confidence 50, state-level only
+
+STEP 5: VPN Detection
+- Call VPNDetectionService->detect($ip, $asn, $reverseDNS)
+- Check multiple indicators
+- If VPN detected: Reduce confidence by 15-20 points
+
+STEP 6: Apply Fingerprint History (if returning user)
+- If typical_city matches detected_city:
+  - Boost confidence by 10-15 points
+  - Increase trust_score by 5 points
+- If location changed drastically:
+  - Flag as potential VPN or travel
+  - Keep confidence low
+
+STEP 7: Determine final result
+- If confidence >= 75 and city detected:
+  - Return city-level result
+- If confidence 60-74:
+  - Return with medium confidence flag
+- If confidence < 60:
+  - Return state-level only
+  - Include top 3 probable cities
+  - Recommendation: 'soft_prompt'
+
+STEP 8: Save detection
+- Insert into user_detections table
+- Update user_fingerprints table (visit_count, last_seen, patterns)
+
+STEP 9: Self-learning
+- If confidence >= 80:
+  - Call FingerprintLearningService->learnIPRange()
+  - Update ip_range_learnings table
+
+STEP 10: Return response
+- Format response as per API spec
+- Include all required fields
+
+Return: JSON response
+```
+
+---
+
+### ReverseDNSService.php
+
+```
+Function: extractCity($hostname)
+
+Input: Reverse DNS hostname (string)
+
+Process:
+
+1. Define ISP patterns (regex):
+   - GTPL: /\.([a-z]+)\.gtpl\.net\.in/i
+   - Hathway: /\.([a-z]+)\.hathway\.com/i
+   - Airtel: /abts-([a-z]{3,})-.*\.airtelbroadband\.in/i
+   - BSNL: /\.([a-z]+)\.bsnl\.in/i
+   - Spectranet: /\.([a-z]+)\.spectranet\.in/i
+   - Railwire: /\.([a-z]+)\.railwire/i
+   - Generic city pattern: /([a-z]{4,})\.(isp|net|broadband)/i
+
+2. Loop through patterns:
+   - Try each regex against hostname
+   - If match found:
+     * Extract city token
+     * Call fuzzyMatchCity($token)
+     * Return city with confidence 88
+
+3. If no match:
+   - Return null
+
+Function: fuzzyMatchCity($token)
+
+Input: City abbreviation or name (string)
+
+Process:
+
+1. Define city aliases map:
+   'mum' → 'Mumbai'
+   'mumbai' → 'Mumbai'
+   'bom' → 'Mumbai'
+   'ahm' → 'Ahmedabad'
+   'amd' → 'Ahmedabad'
+   'ahmedabad' → 'Ahmedabad'
+   'surat' → 'Surat'
+   'srt' → 'Surat'
+   'vad' → 'Vadodara'
+   'vadodara' → 'Vadodara'
+   'baroda' → 'Vadodara'
+   'raj' → 'Rajkot'
+   'rajkot' → 'Rajkot'
+   'pune' → 'Pune'
+   'del' → 'Delhi'
+   'delhi' → 'Delhi'
+   'blr' → 'Bangalore'
+   'bangalore' → 'Bangalore'
+   'bengaluru' → 'Bangalore'
+   ... (add top 50 Indian cities)
+
+2. Normalize token:
+   - Convert to lowercase
+   - Trim whitespace
+
+3. Look up in alias map:
+   - If found: Return full city name
+   - If not found: Return capitalized token
+
+Return: City name (string) or null
+```
+
+---
+
+### EnsembleIPService.php
+
+```
+Function: lookup($ip)
+
+Input: IP address (string)
+
+Process:
+
+1. Make 4 parallel API calls:
+   
+   API 1: ipapi.co
+   - URL: https://ipapi.co/{ip}/json/
+   - Extract: city, region, country, postal, asn, org
+   
+   API 2: ip-api.com
+   - URL: http://ip-api.com/json/{ip}
+   - Extract: city, regionName, country, zip, as, isp
+   
+   API 3: geoplugin.net
+   - URL: http://www.geoplugin.net/json.gp?ip={ip}
+   - Extract: geoplugin_city, geoplugin_region, geoplugin_countryName
+   
+   API 4: ipwhois.app
+   - URL: https://ipwhois.app/json/{ip}
+   - Extract: city, region, country, postal, asn, isp
+
+2. Normalize responses:
+   - Convert all to common format:
+     {
+       city: string,
+       state: string,
+       country: string,
+       postal: string,
+       asn: string,
+       isp: string
+     }
+
+3. Weighted voting for city:
+   - Count how many sources returned same city
+   - 4 agree → confidence 85, result: agreed city
+   - 3 agree → confidence 75, result: majority city
+   - 2 agree → confidence 65, result: majority city
+   - No agreement → confidence 50, result: state only
+
+4. Extract other data:
+   - ISP: Use most common value
+   - ASN: Use first non-null value
+   - Postal code: Use first non-null value
+   - State: Use most common value
+
+5. Connection type inference:
+   - Check ASN against mobile carrier list
+   - If mobile ASN: connection_type = 'mobile'
+   - Else: connection_type = 'broadband'
+
+Return:
+{
+  city: string or null,
+  state: string,
+  country: string,
+  confidence: integer (0-100),
+  agreement_count: integer (0-4),
+  postal: string or null,
+  isp: string,
+  asn: string,
+  connection_type: string,
+  sources_data: object (raw responses for debugging)
+}
+```
+
+---
+
+### VPNDetectionService.php
+
+```
+Function: detect($ip, $asn, $reverseDNS)
+
+Input:
+- IP address (string)
+- ASN (string)
+- Reverse DNS hostname (string)
+
+Process:
+
+1. Check Datacenter ASN:
+   - Define datacenter ASN list:
+     ['AS16509', 'AS14061', 'AS16276', 'AS13335', 'AS8075', ...]
+     (AWS, DigitalOcean, OVH, Cloudflare, Microsoft, GCP, etc.)
+   - If ASN in list:
+     * vpn_score += 40
+     * indicators[] = 'datacenter_asn'
+
+2. Check Reverse DNS patterns:
+   - VPN keywords: ['vpn', 'proxy', 'tunnel', 'relay', 'node', 'exit']
+   - If any keyword in hostname:
+     * vpn_score += 30
+     * indicators[] = 'vpn_hostname'
+
+3. Check hosting providers:
+   - Hosting keywords in ISP/hostname: 
+     ['amazon', 'digitalocean', 'ovh', 'linode', 'vultr', 'hetzner']
+   - If found:
+     * vpn_score += 25
+     * indicators[] = 'hosting_provider'
+
+4. Check IP type:
+   - If IP starts with known VPN ranges:
+     * vpn_score += 20
+     * indicators[] = 'vpn_ip_range'
+
+5. Calculate final result:
+   - If vpn_score >= 50:
+     * is_vpn = true
+     * confidence = vpn_score
+   - Else:
+     * is_vpn = false
+     * confidence = 100 - vpn_score
+
+Return:
+{
+  is_vpn: boolean,
+  confidence: integer (0-100),
+  vpn_score: integer,
+  indicators: array of strings
+}
+```
+
+---
+
+### FingerprintLearningService.php
+
+```
+Function: learnIPRange($detection)
+
+Input: Detection object with high confidence (80+)
+
+Process:
+
+1. Extract IP range:
+   - Convert IP to CIDR /24 (e.g., 203.113.45.0/24)
+   - This groups ~256 IPs together
+
+2. Check if range exists:
+   - Query ip_range_learnings for this IP range
+
+3. If exists:
+   - If detected city matches learned city:
+     * sample_count++
+     * success_rate = (consistent_detections / sample_count) * 100
+     * average_confidence = moving average
+     * last_seen = now
+   - If detected city differs:
+     * sample_count++
+     * success_rate decreases
+     * If success_rate < 60%: Mark range as unreliable
+
+4. If doesn't exist:
+   - Create new entry:
+     * ip_range = calculated CIDR
+     * learned_city = detected city
+     * learned_state = detected state
+     * sample_count = 1
+     * success_rate = 100
+     * primary_isp = ISP from detection
+     * primary_asn = ASN from detection
+     * reverse_dns_pattern = extract pattern from hostname
+
+5. Only keep reliable ranges:
+   - If sample_count >= 10 and success_rate >= 70%:
+     * Mark as is_active = true
+     * Can be used for future detections
+   - Else:
+     * is_active = false
+     * Still collecting data
+
+Function: checkIPRangeLearnings($ip)
+
+Input: IP address
+
+Process:
+
+1. Convert IP to /24 CIDR
+2. Query ip_range_learnings:
+   - WHERE ip_range >>= $ip (contains IP)
+   - AND is_active = true
+   - AND sample_count >= 10
+   - AND success_rate >= 70
+   - ORDER BY sample_count DESC
+   - LIMIT 1
+
+3. If found:
+   - Return learned city with confidence = success_rate
+
+4. If not found:
+   - Return null
+
+Return: {city: string, confidence: integer} or null
+```
+
+---
+
+## MIDDLEWARE & VALIDATION
+
+### ValidateApiKey.php
+
+```
+Process:
+
+1. Extract API key from header:
+   - Check X-API-Key header
+   - If not present: Return 401 Unauthorized
+
+2. Query clients table:
+   - WHERE api_key = $headerKey
+   - AND status = 'active'
+
+3. If found:
+   - Update last_api_call timestamp
+   - Attach client to request object
+   - Continue to controller
+
+4. If not found:
+   - Return 401 with error message:
+     "Invalid or inactive API key"
+```
+
+### RateLimiter.php
+
+```
+Process:
+
+1. Get client ID from validated request
+2. Check rate limit:
+   - Key: "ratelimit:{client_id}:{current_minute}"
+   - Get count from Redis/cache
+
+3. If count >= limit (e.g., 100 per minute):
+   - Return 429 Too Many Requests
+   - Include retry_after header
+
+4. If below limit:
+   - Increment count
+   - Set TTL to 60 seconds
+   - Continue to controller
+```
+
+---
+
+## DASHBOARD SPECIFICATION
+
+### Pages Needed:
+
+#### 1. Login Page (`/login`)
+- Email and password fields
+- Login button
+- Forgot password link
+
+#### 2. Dashboard Home (`/dashboard`)
+
+**Top Stats (Cards):**
+- Total API Calls Today: {number}
+- Unique Users Today: {number}
+- Average Confidence: {percentage}%
+- VPN Detection Rate: {percentage}%
+
+**Charts:**
+- Line chart: API calls over time (last 7 days)
+- Pie chart: Top 5 cities by volume
+- Bar chart: Confidence distribution (High/Medium/Low)
+
+**Recent Detections Table:**
+| Timestamp | User ID | City | State | Confidence | VPN | Method |
+|-----------|---------|------|-------|------------|-----|--------|
+| 2:30 PM   | fp_abc  | Ahmd | Guj   | 85%       | No  | rDNS   |
+
+**Quick Actions:**
+- View API Documentation
+- Download Reports
+- Manage API Keys
+
+#### 3. Analytics Page (`/dashboard/analytics`)
+
+**Filters:**
+- Date range selector (Last 24h, 7d, 30d, Custom)
+- City filter
+- Confidence filter
+
+**Detailed Charts:**
+- Requests over time (hourly breakdown)
+- Geographic distribution (map or list)
+- Detection method breakdown
+- VPN detection trends
+- Confidence score trends
+
+**Export Options:**
+- Download CSV
+- Download JSON
+- Generate PDF report
+
+#### 4. API Keys Page (`/dashboard/api-keys`)
+
+**List of API Keys:**
+| Key Name | API Key | Created | Last Used | Status | Actions |
+|----------|---------|---------|-----------|--------|---------|
+| Production | sk_live_... | Jan 15 | 2 mins ago | Active | Regenerate / Revoke |
+| Development | sk_dev_... | Jan 15 | 1 day ago | Active | Regenerate / Revoke |
+
+**Actions:**
+- Create New API Key button
+- Regenerate key (with confirmation)
+- Revoke key (with confirmation)
+- View key details (allowed domains, webhook URL)
+
+#### 5. Settings Page (`/dashboard/settings`)
+
+**Sections:**
+
+**Company Information:**
+- Company name (editable)
+- Email (editable)
+- Current plan: Free / Starter / Growth
+
+**API Configuration:**
+- Allowed domains (comma-separated list)
+- Webhook URL (optional)
+- Enable/disable webhook checkbox
+
+**Security:**
+- Change password
+- Two-factor authentication (future)
+
+**Billing (if applicable):**
+- Current usage: {count} / {limit} requests
+- Upgrade plan button
+
+#### 6. Documentation Page (`/dashboard/docs`)
+
+**Sections:**
+- Quick Start Guide
+- API Reference (endpoints, parameters, responses)
+- SDK Integration Examples
+  * HTML/JavaScript example
+  * React example
+  * Vue example
+- Code Samples (copy-paste ready)
+- FAQs
+- Support contact
+
+---
+
+## CONFIGURATION FILES
+
+### .env
+
+```
+APP_NAME="UserDetect API"
+APP_ENV=local
+APP_KEY=base64:...
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=userdetect
+DB_USERNAME=postgres
+DB_PASSWORD=
+
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+# API Configuration
+API_RATE_LIMIT_PER_MINUTE=100
+API_TIMEOUT_SECONDS=10
+
+# External API Keys (if needed)
+# Most are free without keys, but can add keys for higher limits
+IPAPI_KEY=optional
+IPGEOLOCATION_KEY=optional
+
+# CORS
+CORS_ALLOWED_ORIGINS=*
+```
+
+### config/detection.php
+
+```php
+return [
+    // Detection methods priority
+    'methods' => [
+        'reverse_dns' => [
+            'enabled' => true,
+            'confidence' => 88,
+            'priority' => 1
+        ],
+        'ensemble_ip' => [
+            'enabled' => true,
+            'confidence_base' => 75,
+            'priority' => 2,
+            'sources' => [
+                'ipapi' => 'https://ipapi.co/{ip}/json/',
+                'ip-api' => 'http://ip-api.com/json/{ip}',
+                'geoplugin' => 'http://www.geoplugin.net/json.gp?ip={ip}',
+                'ipwhois' => 'https://ipwhois.app/json/{ip}'
+            ]
+        ],
+        'fingerprint_history' => [
+            'enabled' => true,
+            'confidence_boost' => 15,
+            'min_visits' => 3
+        ]
+    ],
+    
+    // VPN detection
+    'vpn_detection' => [
+        'enabled' => true,
+        'confidence_penalty' => 20,
+        'datacenter_asns' => [
+            'AS16509', 'AS14061', 'AS16276', 
+            // ... more datacenter ASNs
+        ]
+    ],
+    
+    // Learning
+    'learning' => [
+        'enabled' => true,
+        'min_confidence_to_learn' => 80,
+        'ip_range_cidr_mask' => 24,
+        'min_samples_for_active' => 10,
+        'min_success_rate' => 70
+    ],
+    
+    // Rate limits
+    'rate_limits' => [
+        'free' => 100,      // per minute
+        'starter' => 500,
+        'growth' => 2000
+    ]
+];
+```
+
+---
+
+## TESTING SCENARIOS
+
+### What to Test:
+
+1. **API Authentication:**
+   - Valid API key → Success
+   - Invalid API key → 401
+   - Missing API key → 401
+
+2. **Detection Accuracy:**
+   - Indian broadband IP → Should detect city
+   - Indian mobile IP → Should detect state
+   - VPN IP → Should flag as VPN
+   - Returning user → Should boost confidence
+
+3. **Rate Limiting:**
+   - Make 101 requests in 1 minute → 101st should fail with 429
+
+4. **Learning System:**
+   - Make 15 high-confidence detections from same IP range
+   - Check ip_range_learnings table → Should have entry
+   - Make detection from nearby IP → Should use learned data
+
+5. **Dashboard:**
+   - Login with valid credentials → Success
+   - View dashboard → Shows correct stats
+   - View analytics → Charts render
+   - Create API key → New key appears
+
+6. **SDK:**
+   - Load SDK on test page → Fingerprint generated
+   - Call detect → API returns data
+   - Display results → Correct city shown
+
+---
+
+## DEPLOYMENT CHECKLIST
+
+### Pre-Launch:
+
+- [ ] Database migrations run
+- [ ] Seed initial data (at least 1 client for testing)
+- [ ] API keys generated
+- [ ] Environment variables configured
+- [ ] Rate limiting tested
+- [ ] CORS configured correctly
+- [ ] SDK compiled and minified
+- [ ] SDK hosted on CDN
+- [ ] Dashboard login works
+- [ ] All API endpoints return correct responses
+- [ ] Error handling works
+- [ ] Logging configured
+
+### Launch:
+
+- [ ] Deploy to production server
+- [ ] Configure domain/subdomain
+- [ ] SSL certificate installed
+- [ ] Database backups scheduled
+- [ ] Monitoring set up
+- [ ] Documentation published
+- [ ] Demo page live
+- [ ] Test with real client integration
+
+### Post-Launch:
+
+- [ ] Monitor API usage
+- [ ] Check error logs daily
+- [ ] Verify learning system working
+- [ ] Track accuracy metrics
+- [ ] Collect client feedback
+
+---
+
+## SUCCESS METRICS
+
+### Week 1:
+- 2 clients integrated
+- 1,000+ detections
+- 70%+ average confidence
+- Dashboard functional
+
+### Week 4:
+- 5 clients
+- 25,000+ detections
+- 75%+ average confidence
+- IP range learnings showing improvement
+
+### Week 12:
+- 20 clients
+- 200,000+ detections
+- 82%+ average confidence
+- Self-learning providing measurable improvement
+
+---
+
+## IMPROVEMENT ROADMAP
+
+### Phase 2 (After MVP):
+- Add 2-3 strategic servers for latency measurement
+- Implement soft prompt feature in SDK
+- Add more ISP patterns to reverse DNS parser
+- Build ML model (Random Forest)
+
+### Phase 3:
+- Advanced ML (LightGBM)
+- Behavioral pattern recognition
+- Mobile vs Broadband optimization
+- Enterprise features (custom webhooks, SLA)
+
+### Phase 4:
+- White-label solution
+- Multi-country support
+- Advanced fraud detection
+- Real-time streaming APIs
+
+---
+
+## IMPORTANT NOTES
+
+1. **Free API Limits:**
+   - ipapi.co: 1,000/day free
+   - ip-api.com: 45/min free, unlimited daily
+   - geoplugin.net: Unlimited free
+   - ipwhois.app: 10,000/month free
+   
+   **Strategy:** Rotate through these. If one fails/rate-limited, use others.
+
+2. **Fingerprint Privacy:**
+   - Never store personally identifiable information
+   - Fingerprint is hashed, not reversible
+   - Comply with privacy regulations
+   - Provide opt-out mechanism
+
+3. **Database Optimization:**
+   - Index frequently queried fields
+   - Partition user_detections by month (after growth)
+   - Archive old data after 90 days
+
+4. **Scalability:**
+   - Use Redis for caching
+   - Queue heavy operations
+   - Implement CDN for SDK
+   - Consider read replicas for analytics
+
+5. **Security:**
+   - Always use HTTPS
+   - Validate all inputs
+   - Rate limit aggressively
+   - Monitor for abuse
+   - Hash API secrets
+
+---
+
+**END OF SPECIFICATION**
+
+This specification contains everything needed to build the MVP. Use your IDE's AI assistant to implement each component following these exact specifications.
