@@ -129,6 +129,14 @@ class DetectionService
 
         // STEP 9: Save detection
         $processingTime = (int) ((microtime(true) - $startTime) * 1000);
+        $targetP95Ms = (int) config('detection.slo.detect_p95_ms', 700);
+        if ($processingTime > $targetP95Ms) {
+            Log::channel('detection')->warning('Detection exceeded latency SLO target', [
+                'processing_time_ms' => $processingTime,
+                'target_p95_ms' => $targetP95Ms,
+                'method' => $method,
+            ]);
+        }
 
         $detection = $this->saveDetection($client, [
             'fingerprint_id' => $fingerprintId ?? 'unknown',
@@ -167,7 +175,7 @@ class DetectionService
         }
 
         // STEP 12: Build response
-        return [
+        $response = [
             'success' => true,
             'request_id' => $requestId,
             'user_id' => $fingerprintId ? "fp_{$fingerprintId}" : null,
@@ -198,6 +206,18 @@ class DetectionService
             'processing_time_ms' => $processingTime,
             'timestamp' => now()->toIso8601String(),
         ];
+
+        $includeDebugInfo = (bool) data_get($request->input('options', []), 'include_debug_info', false);
+        if ($includeDebugInfo) {
+            $response['diagnostics'] = [
+                'quality_telemetry' => $fusionResult['quality_telemetry'] ?? null,
+                'fusion_debug' => $fusionResult['fusion_debug'] ?? null,
+                'slo_target_ms' => $targetP95Ms,
+                'slo_breached' => $processingTime > $targetP95Ms,
+            ];
+        }
+
+        return $response;
     }
 
     private function saveDetection(Client $client, array $data): ?UserDetection

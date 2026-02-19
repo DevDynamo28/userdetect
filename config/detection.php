@@ -25,8 +25,12 @@ return [
             'enabled' => true,
             'confidence_base' => 75,
             'priority' => 2,
-            'timeout' => 3, // seconds per API
+            'timeout' => (int) env('ENSEMBLE_TIMEOUT_SECONDS', 3), // seconds per API
+            'connect_timeout' => (int) env('ENSEMBLE_CONNECT_TIMEOUT_SECONDS', 2), // network connect timeout per API
             'geo_cluster_radius_km' => 50, // cities within this radius are treated as same location
+            'min_sources_required' => (int) env('ENSEMBLE_MIN_SOURCES_REQUIRED', 2), // below this, confidence is capped
+            'failure_circuit_threshold' => (int) env('ENSEMBLE_FAILURE_CIRCUIT_THRESHOLD', 4), // consecutive failures to open circuit
+            'failure_circuit_ttl_seconds' => (int) env('ENSEMBLE_FAILURE_CIRCUIT_TTL_SECONDS', 120), // skip external calls while circuit open
             'sources' => [
                 'ipapi' => 'https://ipapi.co/{ip}/json/',
                 'ip-api' => 'http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as',
@@ -95,6 +99,8 @@ return [
         'ip_range_cidr_mask' => 24,
         'min_samples_for_active' => 10,
         'min_success_rate' => 70,
+        'retention_days' => (int) env('DETECTION_RETENTION_DAYS', 90),
+        'fingerprint_retention_days' => (int) env('FINGERPRINT_RETENTION_DAYS', 90),
     ],
 
     /*
@@ -134,6 +140,15 @@ return [
         'ip_geo_ttl' => 3600,       // 1 hour for IP geolocation
         'api_key_ttl' => 300,        // 5 minutes for API key validation
         'ensemble_ttl' => 3600,      // 1 hour for ensemble results
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Performance / SLO Targets
+    |--------------------------------------------------------------------------
+    */
+    'slo' => [
+        'detect_p95_ms' => (int) env('DETECT_SLO_P95_MS', 700),
     ],
 
     /*

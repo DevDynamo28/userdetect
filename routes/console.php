@@ -2,5 +2,8 @@
 
 use Illuminate\Support\Facades\Schedule;
 
-// Clean up old detections (archive data older than 90 days)
-Schedule::command('model:prune', ['--model' => 'App\\Models\\UserDetection'])->daily();
+// Retention cleanup for detections and fingerprints.
+Schedule::command('data:cleanup-old')->dailyAt('03:00');
+
+// Optional pruning support for models that define prunable rules.
+Schedule::command('model:prune', ['--model' => 'App\\Models\\UserDetection'])->dailyAt('03:30');

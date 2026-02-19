@@ -36,6 +36,7 @@ Route::get('/health', function () {
         'status' => 'ok',
         'service' => 'UserDetect API',
         'domain' => 'devdemosite.live',
+        'slo_target_ms' => (int) config('detection.slo.detect_p95_ms', 700),
         'timestamp' => now()->toIso8601String(),
     ]);
 });

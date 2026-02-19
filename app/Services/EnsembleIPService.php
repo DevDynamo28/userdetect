@@ -9,14 +9,20 @@ use Illuminate\Support\Facades\Log;
 class EnsembleIPService
 {
     private int $timeout;
+    private int $connectTimeout;
     private float $clusterRadiusKm;
     private array $sourceWeights;
+    private int $failureCircuitThreshold;
+    private int $failureCircuitTtl;
 
     public function __construct()
     {
         $this->timeout = config('detection.methods.ensemble_ip.timeout', 3);
+        $this->connectTimeout = config('detection.methods.ensemble_ip.connect_timeout', 2);
         $this->clusterRadiusKm = config('detection.methods.ensemble_ip.geo_cluster_radius_km', 50);
         $this->sourceWeights = config('detection.methods.ensemble_ip.source_weights', []);
+        $this->failureCircuitThreshold = config('detection.methods.ensemble_ip.failure_circuit_threshold', 4);
+        $this->failureCircuitTtl = config('detection.methods.ensemble_ip.failure_circuit_ttl_seconds', 120);
     }
 
     /**
@@ -39,18 +45,30 @@ class EnsembleIPService
 
     private function performLookup(string $ip): array
     {
+        if ($this->isCircuitOpen()) {
+            Log::channel('detection')->warning('Ensemble circuit is open, skipping API lookup.');
+            return $this->emptyResult($ip);
+        }
+
         $sources = config('detection.methods.ensemble_ip.sources');
         $responses = [];
 
         $sourceKeys = array_keys($sources);
 
-        // Make concurrent requests to all sources
-        $httpResponses = Http::pool(fn($pool) => array_map(
-            fn($key) => $pool->as($key)
-                ->timeout($this->timeout)
-                ->get(str_replace('{ip}', $ip, $sources[$key])),
-            $sourceKeys
-        ));
+        try {
+            // Make concurrent requests to all sources
+            $httpResponses = Http::pool(fn($pool) => array_map(
+                fn($key) => $pool->as($key)
+                    ->connectTimeout($this->connectTimeout)
+                    ->timeout($this->timeout)
+                    ->get(str_replace('{ip}', $ip, $sources[$key])),
+                $sourceKeys
+            ));
+        } catch (\Throwable $e) {
+            $this->registerCircuitFailure();
+            Log::channel('detection')->warning("Ensemble request pool failed for {$ip}: {$e->getMessage()}");
+            return $this->emptyResult($ip);
+        }
 
         // Normalize each response
         foreach ($sourceKeys as $source) {
@@ -73,7 +91,14 @@ class EnsembleIPService
             }
         }
 
-        Log::channel('detection')->info("Ensemble for {$ip}: " . count($responses) . '/' . count($sourceKeys) . ' sources responded');
+        $responseCount = count($responses);
+        Log::channel('detection')->info("Ensemble for {$ip}: {$responseCount}/" . count($sourceKeys) . ' sources responded');
+
+        if ($responseCount === 0) {
+            $this->registerCircuitFailure();
+        } else {
+            $this->clearCircuitFailures();
+        }
 
         return $this->calculateConsensus($responses, $ip);
     }
@@ -340,6 +365,11 @@ class EnsembleIPService
         }
         arsort($cityVotes);
 
+        $minSourcesRequired = (int) config('detection.methods.ensemble_ip.min_sources_required', 2);
+        if ($agreementCount < $minSourcesRequired) {
+            $confidence = min($confidence, 54);
+        }
+
         return [
             'city' => $confidence >= 55 ? $city : null,
             'state' => $state,
@@ -579,5 +609,52 @@ class EnsembleIPService
             'sources_data' => [],
             'alternatives' => [],
         ];
+    }
+
+    private function isCircuitOpen(): bool
+    {
+        try {
+            return (bool) Cache::get($this->circuitOpenKey(), false);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function registerCircuitFailure(): void
+    {
+        try {
+            $count = (int) Cache::increment($this->circuitFailureKey());
+            if ($count === 1) {
+                Cache::put($this->circuitFailureKey(), 1, now()->addSeconds($this->failureCircuitTtl));
+                $count = 1;
+            }
+
+            if ($count >= $this->failureCircuitThreshold) {
+                Cache::put($this->circuitOpenKey(), true, now()->addSeconds($this->failureCircuitTtl));
+                Log::channel('detection')->warning("Ensemble circuit opened after {$count} consecutive failures.");
+            }
+        } catch (\Throwable $e) {
+            Log::channel('detection')->warning("Failed to update ensemble circuit state: {$e->getMessage()}");
+        }
+    }
+
+    private function clearCircuitFailures(): void
+    {
+        try {
+            Cache::forget($this->circuitFailureKey());
+            Cache::forget($this->circuitOpenKey());
+        } catch (\Throwable $e) {
+            Log::channel('detection')->warning("Failed to clear ensemble circuit state: {$e->getMessage()}");
+        }
+    }
+
+    private function circuitFailureKey(): string
+    {
+        return 'ensemble:circuit:failures';
+    }
+
+    private function circuitOpenKey(): string
+    {
+        return 'ensemble:circuit:open';
     }
 }

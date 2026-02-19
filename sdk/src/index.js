@@ -27,6 +27,7 @@ const DEFAULTS = {
     debug: false,
     autoDetect: true,
     returnAlternatives: false,
+    onEvent: null,
 };
 
 /**
@@ -62,6 +63,19 @@ function init(apiKey, callback, options) {
 
     if (_options.autoDetect) {
         detect().catch(function(err) {
+            const fallbackError = {
+                success: false,
+                error: {
+                    code: 'SDK_ERROR',
+                    message: (err && err.message) || 'Auto-detect failed.',
+                },
+            };
+
+            _lastDetection = fallbackError;
+            if (_callback) {
+                _callback(fallbackError);
+            }
+
             if (_options.debug) {
                 console.error('[UserDetect] Auto-detect failed:', err);
             }
@@ -78,29 +92,48 @@ async function detect() {
         throw new Error('[UserDetect] SDK not initialized. Call UserDetect.init() first.');
     }
 
+    emitEvent('detect_started', { timestamp: Date.now() });
+
     if (_options.debug) {
         console.log('[UserDetect] Starting detection...');
     }
 
-    // Generate fingerprint
-    _fingerprint = await generateFingerprint();
+    let result;
+    try {
+        // Generate fingerprint
+        _fingerprint = await generateFingerprint();
 
-    if (_options.debug) {
-        console.log('[UserDetect] Fingerprint:', _fingerprint);
+        if (_options.debug) {
+            console.log('[UserDetect] Fingerprint:', _fingerprint);
+        }
+
+        // Collect signals
+        const signals = collectSignals(_fingerprint);
+
+        if (_options.debug) {
+            console.log('[UserDetect] Signals:', signals);
+        }
+
+        // Send to API
+        result = await sendDetection(_apiKey, signals, _options);
+    } catch (err) {
+        result = {
+            success: false,
+            error: {
+                code: 'SDK_ERROR',
+                message: (err && err.message) || 'SDK detection failed before API request.',
+            },
+        };
     }
-
-    // Collect signals
-    const signals = collectSignals(_fingerprint);
-
-    if (_options.debug) {
-        console.log('[UserDetect] Signals:', signals);
-    }
-
-    // Send to API
-    const result = await sendDetection(_apiKey, signals, _options);
 
     // Cache result
     _lastDetection = result;
+
+    emitEvent(result.success ? 'detect_succeeded' : 'detect_failed', {
+        success: result.success,
+        error: result.error || null,
+        request_id: result.request_id || null,
+    });
 
     if (_options.debug) {
         console.log('[UserDetect] Result:', result);
@@ -149,6 +182,21 @@ function detectApiEndpoint() {
 
     // Fallback: use current page origin
     return window.location.origin + '/api';
+}
+
+function emitEvent(name, payload) {
+    if (typeof _options.onEvent !== 'function') {
+        return;
+    }
+
+    try {
+        _options.onEvent({
+            name: name,
+            payload: payload || {},
+        });
+    } catch (_err) {
+        // Never throw from SDK event hooks.
+    }
 }
 
 // Public API

@@ -44,9 +44,10 @@ export async function sendDetection(apiKey, signals, options) {
             return {
                 success: false,
                 error: {
-                    code: 'NETWORK_ERROR',
+                    code: retryError.code || 'NETWORK_ERROR',
                     message: retryError.message || 'Failed to connect to detection API.',
                 },
+                request_id: retryError.request_id || null,
             };
         }
     }
@@ -69,26 +70,32 @@ async function makeRequest(url, headers, body, timeout) {
 
         clearTimeout(timeoutId);
 
+        const payload = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
             return {
                 success: false,
-                error: errorData.error || {
+                error: payload.error || {
                     code: 'HTTP_ERROR',
                     message: `HTTP ${response.status}: ${response.statusText}`,
                 },
+                request_id: payload.request_id || null,
             };
         }
 
-        return await response.json();
+        return payload;
     } catch (error) {
         clearTimeout(timeoutId);
 
         if (error.name === 'AbortError') {
-            throw new Error('Request timeout');
+            const timeoutError = new Error('Request timeout');
+            timeoutError.code = 'NETWORK_TIMEOUT';
+            throw timeoutError;
         }
 
-        throw error;
+        const networkError = new Error(error.message || 'Network request failed');
+        networkError.code = 'NETWORK_ERROR';
+        throw networkError;
     }
 }
 

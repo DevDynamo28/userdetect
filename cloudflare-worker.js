@@ -1,80 +1,126 @@
 /**
- * Cloudflare Worker — Geolocation Proxy
- * 
- * Deploy this Worker to inject Cloudflare's geo data into requests
- * before they reach your Laravel backend.
- * 
- * Setup:
- * 1. Go to Cloudflare Dashboard → Workers & Pages → Create Worker
- * 2. Paste this code
- * 3. Add a route: yourdomain.com/api/* → this worker
- * 4. Set ORIGIN_URL environment variable to your Laravel server
- *    e.g., https://your-server.com
+ * Cloudflare Worker - Geolocation Proxy
+ *
+ * Required env var:
+ * - ORIGIN_URL=https://<direct-origin-host>
+ *
+ * Important:
+ * - ORIGIN_URL must not point to the same hostname/route protected by this Worker.
  */
+
+const API_PATH_PREFIX = "/api/";
+const FORWARDED_MARKER_HEADER = "X-Worker-Forwarded";
+
+function withCors(headers = new Headers()) {
+    const out = new Headers(headers);
+    out.set("Access-Control-Allow-Origin", "*");
+    out.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    out.set("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+    out.set("Access-Control-Max-Age", "86400");
+    return out;
+}
+
+function jsonError(status, code, message, extra = {}) {
+    return new Response(
+        JSON.stringify({
+            success: false,
+            error: { code, message, ...extra },
+        }),
+        {
+            status,
+            headers: withCors(new Headers({ "Content-Type": "application/json" })),
+        },
+    );
+}
+
+function isLikelyRecursiveRoute(requestHost, originHost, pathname) {
+    return requestHost === originHost && pathname.startsWith(API_PATH_PREFIX);
+}
+
 export default {
     async fetch(request, env) {
-        const url = new URL(request.url);
+        if (request.method === "OPTIONS") {
+            return new Response(null, { status: 204, headers: withCors() });
+        }
 
-        // Build origin URL — forward to your Laravel backend
-        const originUrl = (env.ORIGIN_URL || 'https://devdemosite.live') + url.pathname + url.search;
+        const requestUrl = new URL(request.url);
+        const originBase = (env.ORIGIN_URL || "").trim();
 
-        // Extract Cloudflare's geolocation data from request.cf
+        if (!originBase) {
+            return jsonError(
+                500,
+                "WORKER_CONFIG_ERROR",
+                "Worker is missing ORIGIN_URL. Configure a direct origin host.",
+            );
+        }
+
+        let originBaseUrl;
+        try {
+            originBaseUrl = new URL(originBase);
+        } catch (_err) {
+            return jsonError(
+                500,
+                "WORKER_CONFIG_ERROR",
+                "ORIGIN_URL is invalid. Use a full URL like https://origin.example.com.",
+            );
+        }
+
+        if (request.headers.get(FORWARDED_MARKER_HEADER) === "1") {
+            return jsonError(
+                508,
+                "LOOP_DETECTED",
+                "Worker forwarding loop detected. Check Worker route and ORIGIN_URL.",
+            );
+        }
+
+        if (isLikelyRecursiveRoute(requestUrl.hostname, originBaseUrl.hostname, requestUrl.pathname)) {
+            return jsonError(
+                500,
+                "WORKER_CONFIG_ERROR",
+                "ORIGIN_URL points to the same Worker hostname for /api/* and causes recursion.",
+            );
+        }
+
+        const originUrl = new URL(requestUrl.pathname + requestUrl.search, originBaseUrl).toString();
+        const headers = new Headers(request.headers);
         const cf = request.cf || {};
 
-        // Clone headers
-        const headers = new Headers(request.headers);
+        headers.set(FORWARDED_MARKER_HEADER, "1");
+        headers.set("X-Forwarded-Host", requestUrl.hostname);
+        headers.set("X-Real-IP", request.headers.get("CF-Connecting-IP") || "");
 
-        // Fix for 1101 Error: Host header mismatch
-        // When ORIGIN_URL is an IP, we must remove the domain Host header
-        headers.delete('Host');
-        headers.set('X-Forwarded-Host', url.hostname);
+        if (cf.city) headers.set("X-CF-City", cf.city);
+        if (cf.region) headers.set("X-CF-Region", cf.region);
+        if (cf.regionCode) headers.set("X-CF-Region-Code", cf.regionCode);
+        if (cf.country) headers.set("X-CF-Country", cf.country);
+        if (cf.latitude) headers.set("X-CF-Latitude", cf.latitude.toString());
+        if (cf.longitude) headers.set("X-CF-Longitude", cf.longitude.toString());
+        if (cf.timezone) headers.set("X-CF-Timezone", cf.timezone);
+        if (cf.postalCode) headers.set("X-CF-PostalCode", cf.postalCode);
+        if (cf.colo) headers.set("X-CF-Colo", cf.colo);
+        if (cf.asn) headers.set("X-CF-ASN", cf.asn.toString());
+        if (cf.asOrganization) headers.set("X-CF-ASOrg", cf.asOrganization);
 
-        // Inject Cloudflare geo headers
-        if (cf.city) headers.set('X-CF-City', cf.city);
-        if (cf.region) headers.set('X-CF-Region', cf.region);
-        if (cf.regionCode) headers.set('X-CF-Region-Code', cf.regionCode);
-        if (cf.country) headers.set('X-CF-Country', cf.country);
-        if (cf.latitude) headers.set('X-CF-Latitude', cf.latitude.toString());
-        if (cf.longitude) headers.set('X-CF-Longitude', cf.longitude.toString());
-        if (cf.timezone) headers.set('X-CF-Timezone', cf.timezone);
-        if (cf.postalCode) headers.set('X-CF-PostalCode', cf.postalCode);
-        if (cf.colo) headers.set('X-CF-Colo', cf.colo);
-        if (cf.asn) headers.set('X-CF-ASN', cf.asn.toString());
-        if (cf.asOrganization) headers.set('X-CF-ASOrg', cf.asOrganization);
-
-        // Preserve the real client IP
-        headers.set('X-Real-IP', request.headers.get('CF-Connecting-IP') || '');
-
-        // Forward the request to your origin
         const originRequest = new Request(originUrl, {
             method: request.method,
-            headers: headers,
-            body: request.method !== 'GET' && request.method !== 'HEAD'
-                ? request.body
-                : undefined,
+            headers,
+            body: request.method !== "GET" && request.method !== "HEAD" ? request.body : undefined,
         });
 
         try {
-            const response = await fetch(originRequest);
-
-            // Add CORS headers for SDK requests
-            const responseHeaders = new Headers(response.headers);
-            responseHeaders.set('Access-Control-Allow-Origin', '*');
-            responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
-
-            return new Response(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers: responseHeaders,
+            const originResponse = await fetch(originRequest);
+            return new Response(originResponse.body, {
+                status: originResponse.status,
+                statusText: originResponse.statusText,
+                headers: withCors(originResponse.headers),
             });
         } catch (error) {
-            return new Response(JSON.stringify({
-                error: 'Origin server unreachable'
-            }), {
-                status: 502,
-                headers: { 'Content-Type': 'application/json' }
+            const message = (error && error.message) || "Origin fetch failed";
+            const code = /tls|ssl|certificate/i.test(message) ? "ORIGIN_TLS_ERROR" : "ORIGIN_UNREACHABLE";
+
+            return jsonError(502, code, "Origin server is unreachable from Worker.", {
+                detail: message,
             });
         }
-    }
+    },
 };

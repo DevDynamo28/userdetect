@@ -25,6 +25,7 @@ class SignalFusionService
     public function inferLocation(string $ip, array $signals, Request $request): array
     {
         $evidence = [];
+        $fallbackReason = null;
 
         // 1. Cloudflare geo headers (most accurate passive source)
         $cfEvidence = $this->fromCloudflareHeaders($request);
@@ -54,6 +55,7 @@ class SignalFusionService
         // 6. Ensemble IP APIs (last resort, only if we have weak evidence)
         $totalWeight = array_sum(array_column($evidence, 'weight'));
         if ($totalWeight < 30 || !$this->hasAnyCityEvidence($evidence)) {
+            $fallbackReason = $totalWeight < 30 ? 'low_evidence_weight' : 'no_city_evidence';
             $apiEvidence = $this->fromEnsembleAPIs($ip);
             if ($apiEvidence)
                 $evidence[] = $apiEvidence;
@@ -61,6 +63,7 @@ class SignalFusionService
 
         // Fuse all evidence
         $result = $this->fuseEvidence($evidence);
+        $result['quality_telemetry'] = $this->buildQualityTelemetry($evidence, $result, $fallbackReason);
 
         Log::channel('detection')->info('Signal fusion result', [
             'ip' => $ip,
@@ -69,6 +72,8 @@ class SignalFusionService
             'state' => $result['state'],
             'confidence' => $result['confidence'],
             'method' => $result['method'],
+            'fallback_reason' => $fallbackReason,
+            'confidence_bucket' => $result['quality_telemetry']['confidence_bucket'],
         ]);
 
         return $result;
@@ -465,6 +470,31 @@ class SignalFusionService
             $baseConfidence = max($baseConfidence, 85);
         }
 
+        // Penalize when state signals are highly split between top contenders.
+        $stateWeightMap = [];
+        foreach ($evidence as $e) {
+            $state = $this->normalizeState($e['state'] ?? '');
+            if ($state === '') {
+                continue;
+            }
+
+            $stateWeightMap[$state] = ($stateWeightMap[$state] ?? 0) + ($e['weight'] ?? 1);
+        }
+
+        if (count($stateWeightMap) > 1) {
+            arsort($stateWeightMap);
+            $topWeights = array_values($stateWeightMap);
+            $top = $topWeights[0] ?? 0;
+            $second = $topWeights[1] ?? 0;
+            $ratio = $top > 0 ? ($second / $top) : 0;
+
+            if ($ratio >= 0.6) {
+                $baseConfidence -= 8;
+            } elseif ($ratio >= 0.4) {
+                $baseConfidence -= 4;
+            }
+        }
+
         return min(98, max(10, (int) $baseConfidence));
     }
 
@@ -503,5 +533,44 @@ class SignalFusionService
                 return true;
         }
         return false;
+    }
+
+    private function buildQualityTelemetry(array $evidence, array $result, ?string $fallbackReason): array
+    {
+        $stateEvidence = [];
+        $cityEvidence = [];
+
+        foreach ($evidence as $entry) {
+            $source = $entry['source'] ?? 'unknown';
+            $weight = (float) ($entry['weight'] ?? 1);
+
+            if (!empty($entry['state'])) {
+                $normalizedState = $this->normalizeState($entry['state']);
+                $stateEvidence[$normalizedState]['weight'] = ($stateEvidence[$normalizedState]['weight'] ?? 0) + $weight;
+                $stateEvidence[$normalizedState]['sources'][] = $source;
+            }
+
+            if (!empty($entry['city'])) {
+                $city = strtolower(trim($entry['city']));
+                $cityEvidence[$city]['weight'] = ($cityEvidence[$city]['weight'] ?? 0) + $weight;
+                $cityEvidence[$city]['sources'][] = $source;
+            }
+        }
+
+        $confidence = (int) ($result['confidence'] ?? 0);
+        $confidenceBucket = match (true) {
+            $confidence >= 85 => 'high',
+            $confidence >= 70 => 'medium',
+            $confidence >= 55 => 'low',
+            default => 'very_low',
+        };
+
+        return [
+            'source_participation' => array_values(array_map(fn($e) => $e['source'] ?? 'unknown', $evidence)),
+            'state_disagreement_count' => max(0, count($stateEvidence) - 1),
+            'city_disagreement_count' => max(0, count($cityEvidence) - 1),
+            'fallback_reason' => $fallbackReason,
+            'confidence_bucket' => $confidenceBucket,
+        ];
     }
 }

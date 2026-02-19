@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class UserDetection extends Model
 {
-    use HasUuids;
+    use HasUuids, MassPrunable;
 
     public $timestamps = false;
 
@@ -83,5 +84,12 @@ class UserDetection extends Model
             'last_30_days' => $query->where('detected_at', '>=', now()->subDays(30)),
             default => $query->where('detected_at', '>=', now()->subDays(7)),
         };
+    }
+
+    public function prunable(): Builder
+    {
+        $retentionDays = (int) config('detection.learning.retention_days', 90);
+
+        return static::where('detected_at', '<', now()->subDays($retentionDays));
     }
 }

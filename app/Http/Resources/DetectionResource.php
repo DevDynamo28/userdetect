@@ -49,6 +49,10 @@ class DetectionResource extends JsonResource
             $response['user_history'] = $data['user_history'];
         }
 
+        if (!empty($data['diagnostics'])) {
+            $response['diagnostics'] = $data['diagnostics'];
+        }
+
         return $response;
     }
 }

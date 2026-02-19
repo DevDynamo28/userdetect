@@ -25,6 +25,8 @@
     console.log('State:', data.location.state);
     console.log('Confidence:', data.location.confidence + '%');
     console.log('VPN:', data.vpn_detection.is_vpn);
+  } else {
+    console.warn('Detection failed:', data.error.code, data.error.message);
   }
 });</code></pre>
             </div>
@@ -148,6 +150,8 @@
                     <tr><td class="px-4 py-2 border">401</td><td class="px-4 py-2 border font-mono text-xs">INVALID_API_KEY</td><td class="px-4 py-2 border">API key is invalid or inactive</td></tr>
                     <tr><td class="px-4 py-2 border">422</td><td class="px-4 py-2 border font-mono text-xs">VALIDATION_ERROR</td><td class="px-4 py-2 border">Request validation failed</td></tr>
                     <tr><td class="px-4 py-2 border">429</td><td class="px-4 py-2 border font-mono text-xs">RATE_LIMIT_EXCEEDED</td><td class="px-4 py-2 border">Too many requests</td></tr>
+                    <tr><td class="px-4 py-2 border">503</td><td class="px-4 py-2 border font-mono text-xs">SERVICE_UNAVAILABLE</td><td class="px-4 py-2 border">Temporary auth/dependency outage</td></tr>
+                    <tr><td class="px-4 py-2 border">5xx</td><td class="px-4 py-2 border font-mono text-xs">WORKER_CONFIG_ERROR / LOOP_DETECTED / ORIGIN_UNREACHABLE</td><td class="px-4 py-2 border">Cloudflare edge routing or origin connectivity issue</td></tr>
                 </tbody>
             </table>
         </div>
@@ -182,10 +186,11 @@
         <h3 class="text-base font-medium text-gray-900 mt-6 mb-3">Options</h3>
         <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
             <pre class="text-sm text-green-400"><code>{
-  apiEndpoint: '{{ url('/api') }}',  // API base URL
+  apiEndpoint: '{{ url('/api') }}',  // Recommended: explicitly set your API base URL
   timeout: 10000,                    // Request timeout (ms)
   debug: false,                      // Enable console logging
   autoDetect: true,                  // Auto-run on init
+  onEvent: (event) => {},            // Optional SDK telemetry hook
 }</code></pre>
         </div>
     </div>
@@ -250,7 +255,7 @@ export default {
             @foreach([
                 ['How accurate is the detection?', 'First-time visitors: 70-85% accuracy at city level. Returning visitors: 85-90%+ as the system learns patterns.'],
                 ['Does it work with VPNs?', 'The system detects VPN usage and flags it. When a VPN is detected, confidence scores are reduced and the response includes VPN indicators.'],
-                ['What about privacy?', 'We do not store personally identifiable information. Fingerprints are hashed and not reversible. We comply with privacy regulations.'],
+                ['What about privacy?', 'We do not store personally identifiable information. Fingerprints are hashed and not reversible. Default data retention is 90 days.'],
                 ['What are the rate limits?', 'Free: 100 req/min, Starter: 500 req/min, Growth: 2000 req/min. Contact us for enterprise limits.'],
                 ['Which countries are supported?', 'Currently optimized for India with 50+ city coverage. Support for other countries is on the roadmap.'],
             ] as $i => [$q, $a])
