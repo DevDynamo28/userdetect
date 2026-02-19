@@ -6,10 +6,14 @@
  *
  * Important:
  * - ORIGIN_URL must not point to the same hostname/route protected by this Worker.
+ *   Use a direct IP or a DNS-only (gray cloud) subdomain like origin.devdemosite.live
  */
 
 const API_PATH_PREFIX = "/api/";
 const FORWARDED_MARKER_HEADER = "X-Worker-Forwarded";
+
+// Paths that should pass through to origin without geo processing
+const PASSTHROUGH_PATHS = ["/api/health"];
 
 function withCors(headers = new Headers()) {
     const out = new Headers(headers);
@@ -33,10 +37,6 @@ function jsonError(status, code, message, extra = {}) {
     );
 }
 
-function isLikelyRecursiveRoute(requestHost, originHost, pathname) {
-    return requestHost === originHost && pathname.startsWith(API_PATH_PREFIX);
-}
-
 export default {
     async fetch(request, env) {
         if (request.method === "OPTIONS") {
@@ -44,13 +44,25 @@ export default {
         }
 
         const requestUrl = new URL(request.url);
+        const pathname = requestUrl.pathname;
+
+        // Only process /api/* routes — let everything else pass through to Cloudflare origin
+        if (!pathname.startsWith(API_PATH_PREFIX)) {
+            return fetch(request);
+        }
+
+        // Passthrough paths don't need geo headers — let Cloudflare handle normally
+        if (PASSTHROUGH_PATHS.includes(pathname)) {
+            return fetch(request);
+        }
+
         const originBase = (env.ORIGIN_URL || "").trim();
 
         if (!originBase) {
             return jsonError(
                 500,
                 "WORKER_CONFIG_ERROR",
-                "Worker is missing ORIGIN_URL. Configure a direct origin host.",
+                "Worker is missing ORIGIN_URL. Configure a direct origin host (IP or DNS-only subdomain).",
             );
         }
 
@@ -73,22 +85,17 @@ export default {
             );
         }
 
-        if (isLikelyRecursiveRoute(requestUrl.hostname, originBaseUrl.hostname, requestUrl.pathname)) {
-            return jsonError(
-                500,
-                "WORKER_CONFIG_ERROR",
-                "ORIGIN_URL points to the same Worker hostname for /api/* and causes recursion.",
-            );
-        }
-
-        const originUrl = new URL(requestUrl.pathname + requestUrl.search, originBaseUrl).toString();
+        // Build origin URL — route to direct origin, bypassing Cloudflare
+        const originUrl = new URL(pathname + requestUrl.search, originBaseUrl).toString();
         const headers = new Headers(request.headers);
         const cf = request.cf || {};
 
+        // Mark as forwarded to prevent loops
         headers.set(FORWARDED_MARKER_HEADER, "1");
         headers.set("X-Forwarded-Host", requestUrl.hostname);
         headers.set("X-Real-IP", request.headers.get("CF-Connecting-IP") || "");
 
+        // Inject Cloudflare geo data as custom headers
         if (cf.city) headers.set("X-CF-City", cf.city);
         if (cf.region) headers.set("X-CF-Region", cf.region);
         if (cf.regionCode) headers.set("X-CF-Region-Code", cf.regionCode);

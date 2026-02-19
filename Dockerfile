@@ -86,7 +86,7 @@ RUN set -e \
     && php artisan route:cache \
     && php artisan view:cache
 
-EXPOSE 8000
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
