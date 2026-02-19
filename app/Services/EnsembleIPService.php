@@ -9,10 +9,14 @@ use Illuminate\Support\Facades\Log;
 class EnsembleIPService
 {
     private int $timeout;
+    private float $clusterRadiusKm;
+    private array $sourceWeights;
 
     public function __construct()
     {
-        $this->timeout = config('detection.methods.ensemble_ip.timeout', 2);
+        $this->timeout = config('detection.methods.ensemble_ip.timeout', 3);
+        $this->clusterRadiusKm = config('detection.methods.ensemble_ip.geo_cluster_radius_km', 50);
+        $this->sourceWeights = config('detection.methods.ensemble_ip.source_weights', []);
     }
 
     /**
@@ -38,24 +42,18 @@ class EnsembleIPService
         $sources = config('detection.methods.ensemble_ip.sources');
         $responses = [];
 
+        $sourceKeys = array_keys($sources);
+
         // Make concurrent requests to all sources
-        $httpResponses = Http::pool(fn ($pool) => [
-            $pool->as('ipapi')
+        $httpResponses = Http::pool(fn($pool) => array_map(
+            fn($key) => $pool->as($key)
                 ->timeout($this->timeout)
-                ->get(str_replace('{ip}', $ip, $sources['ipapi'])),
-            $pool->as('ip-api')
-                ->timeout($this->timeout)
-                ->get(str_replace('{ip}', $ip, $sources['ip-api'])),
-            $pool->as('geoplugin')
-                ->timeout($this->timeout)
-                ->get(str_replace('{ip}', $ip, $sources['geoplugin'])),
-            $pool->as('ipwhois')
-                ->timeout($this->timeout)
-                ->get(str_replace('{ip}', $ip, $sources['ipwhois'])),
-        ]);
+                ->get(str_replace('{ip}', $ip, $sources[$key])),
+            $sourceKeys
+        ));
 
         // Normalize each response
-        foreach (['ipapi', 'ip-api', 'geoplugin', 'ipwhois'] as $source) {
+        foreach ($sourceKeys as $source) {
             try {
                 $response = $httpResponses[$source];
                 if ($response instanceof \Illuminate\Http\Client\Response && $response->successful()) {
@@ -83,6 +81,8 @@ class EnsembleIPService
             'ip-api' => $this->normalizeIpApiCom($data),
             'geoplugin' => $this->normalizeGeoplugin($data),
             'ipwhois' => $this->normalizeIpwhois($data),
+            'ipwho' => $this->normalizeIpwho($data),
+            'freeipapi' => $this->normalizeFreeipapi($data),
             default => null,
         };
     }
@@ -99,6 +99,8 @@ class EnsembleIPService
             'country' => $data['country_name'] ?? null,
             'country_code' => $data['country_code'] ?? null,
             'postal' => $data['postal'] ?? null,
+            'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
+            'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
             'asn' => $data['asn'] ?? null,
             'isp' => $data['org'] ?? null,
         ];
@@ -116,6 +118,8 @@ class EnsembleIPService
             'country' => $data['country'] ?? null,
             'country_code' => $data['countryCode'] ?? null,
             'postal' => $data['zip'] ?? null,
+            'latitude' => isset($data['lat']) ? (float) $data['lat'] : null,
+            'longitude' => isset($data['lon']) ? (float) $data['lon'] : null,
             'asn' => !empty($data['as']) ? explode(' ', $data['as'])[0] : null,
             'isp' => $data['isp'] ?? null,
         ];
@@ -133,6 +137,8 @@ class EnsembleIPService
             'country' => $data['geoplugin_countryName'] ?? null,
             'country_code' => $data['geoplugin_countryCode'] ?? null,
             'postal' => null,
+            'latitude' => isset($data['geoplugin_latitude']) ? (float) $data['geoplugin_latitude'] : null,
+            'longitude' => isset($data['geoplugin_longitude']) ? (float) $data['geoplugin_longitude'] : null,
             'asn' => null,
             'isp' => null,
         ];
@@ -150,8 +156,48 @@ class EnsembleIPService
             'country' => $data['country'] ?? null,
             'country_code' => $data['country_code'] ?? null,
             'postal' => $data['postal'] ?? null,
+            'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
+            'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
             'asn' => $data['connection']['asn'] ?? null,
             'isp' => $data['connection']['isp'] ?? ($data['isp'] ?? null),
+        ];
+    }
+
+    private function normalizeIpwho(array $data): ?array
+    {
+        if (($data['success'] ?? true) === false) {
+            return null;
+        }
+
+        return [
+            'city' => $data['city'] ?? null,
+            'state' => $data['region'] ?? null,
+            'country' => $data['country'] ?? null,
+            'country_code' => $data['country_code'] ?? null,
+            'postal' => $data['postal'] ?? null,
+            'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
+            'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
+            'asn' => $data['connection']['asn'] ?? null,
+            'isp' => $data['connection']['isp'] ?? ($data['connection']['org'] ?? null),
+        ];
+    }
+
+    private function normalizeFreeipapi(array $data): ?array
+    {
+        if (empty($data['cityName']) && empty($data['regionName'])) {
+            return null;
+        }
+
+        return [
+            'city' => $data['cityName'] ?? null,
+            'state' => $data['regionName'] ?? null,
+            'country' => $data['countryName'] ?? null,
+            'country_code' => $data['countryCode'] ?? null,
+            'postal' => $data['zipCode'] ?? null,
+            'latitude' => isset($data['latitude']) ? (float) $data['latitude'] : null,
+            'longitude' => isset($data['longitude']) ? (float) $data['longitude'] : null,
+            'asn' => null,
+            'isp' => null,
         ];
     }
 
@@ -162,79 +208,259 @@ class EnsembleIPService
             return $this->emptyResult($ip);
         }
 
-        // Collect all city votes
-        $cityVotes = [];
-        $stateVotes = [];
-        $ispValues = [];
-        $asnValues = [];
-        $postalValues = [];
+        // Collect data from all sources
         $sourcesData = [];
+        $sourceEntries = []; // city, lat, lng, weight per source
 
         foreach ($responses as $source => $data) {
             $sourcesData[$source] = $data['city'] ?? 'unknown';
+            $weight = $this->sourceWeights[$source] ?? 1.0;
 
             if (!empty($data['city'])) {
                 $normalizedCity = $this->normalizeCity($data['city']);
-                $cityVotes[$normalizedCity] = ($cityVotes[$normalizedCity] ?? 0) + 1;
-            }
-            if (!empty($data['state'])) {
-                $stateVotes[$data['state']] = ($stateVotes[$data['state']] ?? 0) + 1;
-            }
-            if (!empty($data['isp'])) {
-                $ispValues[] = $data['isp'];
-            }
-            if (!empty($data['asn'])) {
-                $asnValues[] = $data['asn'];
-            }
-            if (!empty($data['postal'])) {
-                $postalValues[] = $data['postal'];
+                $sourceEntries[] = [
+                    'source' => $source,
+                    'city' => $normalizedCity,
+                    'state' => $data['state'] ?? null,
+                    'lat' => $data['latitude'] ?? null,
+                    'lng' => $data['longitude'] ?? null,
+                    'weight' => $weight,
+                    'postal' => $data['postal'] ?? null,
+                    'isp' => $data['isp'] ?? null,
+                    'asn' => $data['asn'] ?? null,
+                ];
             }
         }
 
-        // Determine city by weighted voting
-        $city = null;
-        $agreementCount = 0;
-        $confidence = 50;
-
-        if (!empty($cityVotes)) {
-            arsort($cityVotes);
-            $topCity = array_key_first($cityVotes);
-            $agreementCount = $cityVotes[$topCity];
-            $totalSources = count($responses);
-
-            $city = $topCity;
-            $confidence = match (true) {
-                $agreementCount >= 4 => 85,
-                $agreementCount >= 3 => 75,
-                $agreementCount >= 2 => 65,
-                default => 50,
-            };
-        }
-
-        // State consensus
-        $state = null;
-        if (!empty($stateVotes)) {
+        if (empty($sourceEntries)) {
+            // No city from any source — try to at least get state
+            $stateVotes = [];
+            foreach ($responses as $data) {
+                if (!empty($data['state'])) {
+                    $stateVotes[$data['state']] = ($stateVotes[$data['state']] ?? 0) + 1;
+                }
+            }
             arsort($stateVotes);
-            $state = array_key_first($stateVotes);
+            $state = !empty($stateVotes) ? array_key_first($stateVotes) : null;
+
+            return array_merge($this->emptyResult($ip), [
+                'state' => $state,
+                'sources_data' => $sourcesData,
+            ]);
         }
 
-        // Connection type
-        $asn = $asnValues[0] ?? null;
+        // STEP 1: Geo-cluster sources by lat/lng proximity
+        $clusters = $this->buildGeoClusters($sourceEntries);
+
+        // STEP 2: Find the best cluster (highest total weight)
+        $bestCluster = $this->selectBestCluster($clusters);
+
+        // STEP 3: Determine city from the best cluster
+        $city = $this->getMostVotedCity($bestCluster);
+        $agreementCount = count($bestCluster);
+        $totalSources = count($sourceEntries);
+
+        // STEP 4: Calculate confidence based on agreement ratio and source weights
+        $totalWeight = array_sum(array_column($bestCluster, 'weight'));
+        $maxPossibleWeight = array_sum(array_column($sourceEntries, 'weight'));
+        $weightRatio = $maxPossibleWeight > 0 ? $totalWeight / $maxPossibleWeight : 0;
+
+        $confidence = match (true) {
+            $agreementCount >= 5 && $weightRatio >= 0.8 => 95,
+            $agreementCount >= 4 && $weightRatio >= 0.7 => 90,
+            $agreementCount >= 4 => 85,
+            $agreementCount >= 3 && $weightRatio >= 0.6 => 80,
+            $agreementCount >= 3 => 75,
+            $agreementCount >= 2 && $weightRatio >= 0.5 => 70,
+            $agreementCount >= 2 => 65,
+            $weightRatio >= 0.3 => 55,
+            default => 45,
+        };
+
+        // STEP 5: Get best lat/lng (weighted average from cluster, prefer high-weight sources)
+        $latitude = $this->weightedAverageCoord($bestCluster, 'lat');
+        $longitude = $this->weightedAverageCoord($bestCluster, 'lng');
+
+        // State consensus from cluster
+        $stateVotes = [];
+        foreach ($bestCluster as $entry) {
+            if (!empty($entry['state'])) {
+                $stateVotes[$entry['state']] = ($stateVotes[$entry['state']] ?? 0) + $entry['weight'];
+            }
+        }
+        arsort($stateVotes);
+        $state = !empty($stateVotes) ? array_key_first($stateVotes) : null;
+
+        // ISP / ASN from all responses
+        $ispValues = array_filter(array_column($sourceEntries, 'isp'));
+        $asnValues = array_filter(array_column($sourceEntries, 'asn'));
+        $postalValues = array_filter(array_column($sourceEntries, 'postal'));
+
+        $asn = $this->mostCommon($asnValues);
         $connectionType = $this->inferConnectionType($asn);
 
+        // Build city votes for alternatives
+        $cityVotes = [];
+        foreach ($sourceEntries as $entry) {
+            $cityVotes[$entry['city']] = ($cityVotes[$entry['city']] ?? 0) + $entry['weight'];
+        }
+        arsort($cityVotes);
+
         return [
-            'city' => $confidence >= 60 ? $city : null,
+            'city' => $confidence >= 55 ? $city : null,
             'state' => $state,
             'country' => 'India',
             'confidence' => $confidence,
             'agreement_count' => $agreementCount,
-            'postal' => $postalValues[0] ?? null,
+            'total_sources' => $totalSources,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'postal' => $this->mostCommon($postalValues),
             'isp' => $this->mostCommon($ispValues),
             'asn' => $asn,
             'connection_type' => $connectionType,
             'sources_data' => $sourcesData,
             'alternatives' => $this->getAlternatives($cityVotes, $city),
         ];
+    }
+
+    /**
+     * Group source entries into geographic clusters based on lat/lng proximity.
+     * Sources without coordinates are matched by city name to existing clusters.
+     */
+    private function buildGeoClusters(array $entries): array
+    {
+        $clusters = [];
+
+        // First pass: entries with coordinates
+        $withCoords = array_filter($entries, fn($e) => $e['lat'] !== null && $e['lng'] !== null);
+        $withoutCoords = array_filter($entries, fn($e) => $e['lat'] === null || $e['lng'] === null);
+
+        foreach ($withCoords as $entry) {
+            $placed = false;
+            foreach ($clusters as &$cluster) {
+                // Check distance to cluster centroid
+                $centroid = $this->clusterCentroid($cluster);
+                $distance = $this->haversineDistance($entry['lat'], $entry['lng'], $centroid['lat'], $centroid['lng']);
+
+                if ($distance <= $this->clusterRadiusKm) {
+                    $cluster[] = $entry;
+                    $placed = true;
+                    break;
+                }
+            }
+            unset($cluster);
+
+            if (!$placed) {
+                $clusters[] = [$entry];
+            }
+        }
+
+        // Second pass: entries without coordinates — match by city name
+        foreach ($withoutCoords as $entry) {
+            $placed = false;
+            foreach ($clusters as &$cluster) {
+                foreach ($cluster as $member) {
+                    if (strtolower($member['city']) === strtolower($entry['city'])) {
+                        $cluster[] = $entry;
+                        $placed = true;
+                        break 2;
+                    }
+                }
+            }
+            unset($cluster);
+
+            if (!$placed) {
+                $clusters[] = [$entry];
+            }
+        }
+
+        return $clusters;
+    }
+
+    private function clusterCentroid(array $cluster): array
+    {
+        $lats = array_filter(array_column($cluster, 'lat'));
+        $lngs = array_filter(array_column($cluster, 'lng'));
+
+        return [
+            'lat' => !empty($lats) ? array_sum($lats) / count($lats) : 0,
+            'lng' => !empty($lngs) ? array_sum($lngs) / count($lngs) : 0,
+        ];
+    }
+
+    /**
+     * Calculate distance between two lat/lng points in km using the Haversine formula.
+     */
+    private function haversineDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadius = 6371; // km
+
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2))
+            * sin($dLon / 2) * sin($dLon / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
+    }
+
+    private function selectBestCluster(array $clusters): array
+    {
+        if (empty($clusters)) {
+            return [];
+        }
+
+        // Select cluster with highest total weight
+        usort($clusters, function ($a, $b) {
+            $weightA = array_sum(array_column($a, 'weight'));
+            $weightB = array_sum(array_column($b, 'weight'));
+            return $weightB <=> $weightA;
+        });
+
+        return $clusters[0];
+    }
+
+    /**
+     * Get the most voted city within a cluster, weighted.
+     */
+    private function getMostVotedCity(array $cluster): ?string
+    {
+        $votes = [];
+        foreach ($cluster as $entry) {
+            $votes[$entry['city']] = ($votes[$entry['city']] ?? 0) + $entry['weight'];
+        }
+        arsort($votes);
+
+        return !empty($votes) ? array_key_first($votes) : null;
+    }
+
+    private function weightedAverageCoord(array $cluster, string $key): ?float
+    {
+        $values = [];
+        $weights = [];
+
+        foreach ($cluster as $entry) {
+            if ($entry[$key] !== null) {
+                $values[] = $entry[$key];
+                $weights[] = $entry['weight'];
+            }
+        }
+
+        if (empty($values)) {
+            return null;
+        }
+
+        $totalWeight = array_sum($weights);
+        $weightedSum = 0;
+        for ($i = 0; $i < count($values); $i++) {
+            $weightedSum += $values[$i] * $weights[$i];
+        }
+
+        return round($weightedSum / $totalWeight, 6);
     }
 
     private function normalizeCity(string $city): string
@@ -248,6 +474,16 @@ class EnsembleIPService
             'Madras' => 'Chennai',
             'Poona' => 'Pune',
             'Baroda' => 'Vadodara',
+            'Trivandrum' => 'Thiruvananthapuram',
+            'Cochin' => 'Kochi',
+            'Vizag' => 'Visakhapatnam',
+            'Simla' => 'Shimla',
+            'Pondicherry' => 'Puducherry',
+            'Allahabad' => 'Prayagraj',
+            'Mangalore' => 'Mangaluru',
+            'Mysore' => 'Mysuru',
+            'Benaras' => 'Varanasi',
+            'Gurgaon' => 'Gurugram',
         ];
 
         return $map[$city] ?? $city;
@@ -281,10 +517,10 @@ class EnsembleIPService
         $alternatives = [];
         $total = array_sum($cityVotes);
 
-        foreach ($cityVotes as $city => $count) {
+        foreach ($cityVotes as $city => $weight) {
             $alternatives[] = [
                 'city' => $city,
-                'probability' => $total > 0 ? round(($count / $total) * 100) : 0,
+                'probability' => $total > 0 ? round(($weight / $total) * 100) : 0,
             ];
         }
 
@@ -299,6 +535,9 @@ class EnsembleIPService
             'country' => 'India',
             'confidence' => 0,
             'agreement_count' => 0,
+            'total_sources' => 0,
+            'latitude' => null,
+            'longitude' => null,
             'postal' => null,
             'isp' => null,
             'asn' => null,

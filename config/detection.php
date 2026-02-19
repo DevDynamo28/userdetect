@@ -16,12 +16,24 @@ return [
             'enabled' => true,
             'confidence_base' => 75,
             'priority' => 2,
-            'timeout' => 2, // seconds per API
+            'timeout' => 3, // seconds per API
+            'geo_cluster_radius_km' => 50, // cities within this radius are treated as same location
             'sources' => [
                 'ipapi' => 'https://ipapi.co/{ip}/json/',
-                'ip-api' => 'http://ip-api.com/json/{ip}',
+                'ip-api' => 'http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as',
                 'geoplugin' => 'http://www.geoplugin.net/json.gp?ip={ip}',
                 'ipwhois' => 'https://ipwhois.app/json/{ip}',
+                'ipwho' => 'https://ipwho.is/{ip}',
+                'freeipapi' => 'https://freeipapi.com/api/json/{ip}',
+            ],
+            // Reliability weights per source (higher = more trusted for Indian IPs)
+            'source_weights' => [
+                'ip-api' => 1.5,
+                'ipwho' => 1.3,
+                'ipapi' => 1.0,
+                'ipwhois' => 1.0,
+                'freeipapi' => 0.8,
+                'geoplugin' => 0.6,
             ],
         ],
         'fingerprint_history' => [

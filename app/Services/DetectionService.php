@@ -18,7 +18,8 @@ class DetectionService
         private EnsembleIPService $ensembleIP,
         private VPNDetectionService $vpnDetection,
         private FingerprintLearningService $learning,
-    ) {}
+    ) {
+    }
 
     /**
      * Main detection flow — orchestrates all detection methods.
@@ -145,10 +146,10 @@ class DetectionService
         $alternatives = [];
         $recommendation = null;
 
-        if ($confidence < 60 || !$detectedCity) {
+        if ($confidence < 55 || !$detectedCity) {
             $recommendation = 'soft_prompt';
             $alternatives = $ensembleResult['alternatives'] ?? [];
-            if ($confidence < 60) {
+            if ($confidence < 55) {
                 $detectedCity = null; // Only return state-level for low confidence
             }
         }
@@ -207,7 +208,9 @@ class DetectionService
                 'country' => 'India',
                 'confidence' => $confidence,
                 'method' => $method,
-                'note' => $confidence < 60 ? 'Low confidence - state-level only' : null,
+                'latitude' => $ensembleResult['latitude'] ?? null,
+                'longitude' => $ensembleResult['longitude'] ?? null,
+                'note' => $confidence < 55 ? 'Low confidence - state-level only' : null,
             ],
             'alternatives' => $recommendation ? $alternatives : [],
             'recommendation' => $recommendation,
