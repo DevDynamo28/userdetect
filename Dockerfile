@@ -80,11 +80,13 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 storage bootstrap/cache \
     && mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache storage/geoip storage/data
 
-# Optimize Laravel
-RUN set -e \
-    && php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+# Only cache views at build time (no env vars needed)
+# Config and routes are cached at runtime via entrypoint when env vars are available
+RUN php artisan view:cache
+
+# Entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 80
 
@@ -92,4 +94,4 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost/api/health || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/entrypoint.sh"]
