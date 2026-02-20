@@ -124,6 +124,10 @@ return [
     'signal_weights' => [
         'cloudflare' => 50,
         'fingerprint_history' => 40,
+        // network_probe: browser-measured CF PoP routing — independent of IP GeoIP databases.
+        // Weighted higher than ensemble because it measures actual network topology,
+        // not a database lookup. Provides city-level when RTT ≤ 10ms, state-level otherwise.
+        'network_probe' => 35,
         'language_inference' => 25,
         'ip_ensemble' => 20,
         'local_geoip' => 18,

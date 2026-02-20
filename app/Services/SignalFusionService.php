@@ -16,6 +16,7 @@ class SignalFusionService
         private LocalGeoIPService $localGeoIP,
         private ReverseDNSService $reverseDNS,
         private EnsembleIPService $ensembleIP,
+        private NetworkProbeService $networkProbe,
     ) {
     }
 
@@ -26,32 +27,41 @@ class SignalFusionService
     {
         $evidence = [];
 
-        // 1. Cloudflare geo headers (most accurate passive source)
+        // 1. Cloudflare geo headers (most accurate passive source, but inaccurate
+        //    for mobile ISP IPs which are registered to regional PoPs, not device city)
         $cfEvidence = $this->fromCloudflareHeaders($request);
         if ($cfEvidence)
             $evidence[] = $cfEvidence;
 
-        // 2. Language-based state inference
+        // 2. Browser network probe — CF /cdn-cgi/trace from the BROWSER's network path.
+        //    Gives us the CF PoP nearest to the device (independently of what the
+        //    server-side CF headers say), plus RTT for radius estimation.
+        //    Also surfaces VPN indicators (foreign colo, split-tunnel IP mismatch).
+        $probeResult = $this->fromNetworkProbe($signals, $ip);
+        if ($probeResult['location_evidence'])
+            $evidence[] = $probeResult['location_evidence'];
+
+        // 3. Language-based state inference
         $langEvidence = $this->fromLanguageSignals($signals);
         if ($langEvidence)
             $evidence[] = $langEvidence;
 
-        // 3. Regional font detection
+        // 4. Regional font detection
         $fontEvidence = $this->fromFontSignals($signals);
         if ($fontEvidence)
             $evidence[] = $fontEvidence;
 
-        // 4. Local GeoIP database
+        // 5. Local GeoIP database
         $geoipEvidence = $this->fromLocalGeoIP($ip);
         if ($geoipEvidence)
             $evidence[] = $geoipEvidence;
 
-        // 5. Reverse DNS
+        // 6. Reverse DNS
         $dnsEvidence = $this->fromReverseDNS($ip);
         if ($dnsEvidence)
             $evidence[] = $dnsEvidence;
 
-        // 6. Ensemble IP APIs (last resort, only if we have weak evidence)
+        // 7. Ensemble IP APIs (last resort, only if we have weak evidence)
         $fallbackReason = $this->determineEnsembleFallbackReason($evidence);
         if ($fallbackReason !== null) {
             $apiEvidence = $this->fromEnsembleAPIs($ip);
@@ -61,7 +71,10 @@ class SignalFusionService
 
         // Fuse all evidence
         $result = $this->fuseEvidence($evidence);
-        $result['quality_telemetry'] = $this->buildQualityTelemetry($evidence, $result, $fallbackReason);
+        $result['quality_telemetry']    = $this->buildQualityTelemetry($evidence, $result, $fallbackReason);
+        // Expose probe VPN indicators so DetectionService can pass them to VPNDetectionService
+        $result['probe_vpn_indicators'] = $probeResult['vpn_indicators'];
+        $result['probe_candidates']     = $probeResult['candidates'];
 
         Log::channel('detection')->info('Signal fusion result', [
             'ip' => $ip,
@@ -138,6 +151,29 @@ class SignalFusionService
                 'mobile_asn' => $isMobileAsn,
             ],
         ];
+    }
+
+    /**
+     * Process browser network probe data (CF trace colo + RTT) as location evidence.
+     *
+     * Returns both a location evidence entry (or null if probe data is absent) and
+     * any VPN indicators found (foreign CF colo, split-tunnel IP mismatch).
+     *
+     * This is the key innovation for the mobile ISP wrong-city problem:
+     *   - CF server headers map Airtel IP → Ahmedabad (wrong, it's the ISP's registered city)
+     *   - Browser probe maps browser's network path → AMD PoP = Gujarat ✓
+     *   - High RTT to AMD PoP (>10ms) tells us user is NOT in Ahmedabad city itself
+     *   - This prevents city-level over-confidence on ISP-registered cities
+     */
+    private function fromNetworkProbe(array $signals, string $ip): array
+    {
+        $probes = $signals['network_probes'] ?? null;
+
+        if (!is_array($probes)) {
+            return ['location_evidence' => null, 'vpn_indicators' => [], 'candidates' => []];
+        }
+
+        return $this->networkProbe->process($probes, $ip);
     }
 
     /**

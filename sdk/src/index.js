@@ -7,7 +7,7 @@
  */
 
 import { generateFingerprint } from './fingerprint.js';
-import { collectSignals } from './signals.js';
+import { collectSignals, probeNetwork } from './signals.js';
 import { sendDetection } from './api-client.js';
 
 // Internal state
@@ -100,15 +100,26 @@ async function detect() {
 
     let result;
     try {
-        // Generate fingerprint
-        _fingerprint = await generateFingerprint();
+        // Generate fingerprint and run network probe in parallel.
+        // probeNetwork() fetches CF's /cdn-cgi/trace from the browser to determine
+        // which CF PoP the device's network path hits (independent of our API's PoP).
+        // Running in parallel means the probe adds ZERO extra latency to detection.
+        const [fingerprint, networkProbes] = await Promise.all([
+            generateFingerprint(),
+            probeNetwork().catch(() => null),
+        ]);
+        _fingerprint = fingerprint;
 
         if (_options.debug) {
             console.log('[UserDetect] Fingerprint:', _fingerprint);
+            console.log('[UserDetect] Network probes:', networkProbes);
         }
 
-        // Collect signals
+        // Collect signals and attach probe data
         const signals = collectSignals(_fingerprint);
+        if (networkProbes) {
+            signals.network_probes = networkProbes;
+        }
 
         if (_options.debug) {
             console.log('[UserDetect] Signals:', signals);

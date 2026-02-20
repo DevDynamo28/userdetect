@@ -114,7 +114,10 @@ class DetectionService
             }
         }
 
-        $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname, $cfAsOrg);
+        // Merge VPN indicators from the browser network probe (foreign CF colo, split-tunnel)
+        $probeVpnIndicators = $fusionResult['probe_vpn_indicators'] ?? [];
+
+        $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname, $cfAsOrg, $probeVpnIndicators);
 
         if ($vpnResult['is_vpn']) {
             $penalty = config('detection.vpn_detection.confidence_penalty', 20);

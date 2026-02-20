@@ -27,10 +27,12 @@ class VPNDetectionService
     /**
      * Detect if the IP is likely a VPN/proxy.
      *
-     * @param  string|null  $cfAsOrg  Cloudflare-reported AS Organization (X-CF-ASOrg header).
-     *                                Cloudflare explicitly labels VPN providers here, e.g. "VPN-Consumer-IN".
+     * @param  string|null  $cfAsOrg           Cloudflare AS Organization (X-CF-ASOrg header).
+     *                                         CF labels known VPN providers here, e.g. "VPN-Consumer-IN".
+     * @param  string[]     $probeVpnIndicators VPN signals from the browser network probe
+     *                                         (e.g. 'foreign_cf_colo', 'split_tunnel_proxy').
      */
-    public function detect(string $ip, ?string $asn, ?string $reverseDNS, ?string $cfAsOrg = null): array
+    public function detect(string $ip, ?string $asn, ?string $reverseDNS, ?string $cfAsOrg = null, array $probeVpnIndicators = []): array
     {
         $vpnScore = 0;
         $indicators = [];
@@ -73,6 +75,26 @@ class VPNDetectionService
         if ($cfAsOrg && !in_array('hosting_provider', $indicators, true) && $this->isHostingProvider($cfAsOrg, null)) {
             $vpnScore += 25;
             $indicators[] = 'hosting_provider';
+        }
+
+        // Check 7: Browser network probe indicators.
+        // foreign_cf_colo  — browser's CF trace hit a non-Indian PoP (e.g. SIN, FRA, LHR).
+        //                    For a user who should be in India this is a strong VPN signal (+55).
+        // split_tunnel_proxy — IP seen by CF in browser trace differs from CF-Connecting-IP (+45).
+        //                    Means some traffic bypasses the VPN (split tunnel).
+        foreach ($probeVpnIndicators as $indicator) {
+            if (in_array($indicator, $indicators, true)) {
+                continue; // already counted
+            }
+            $score = match ($indicator) {
+                'foreign_cf_colo'    => 55,
+                'split_tunnel_proxy' => 45,
+                default              => 0,
+            };
+            if ($score > 0) {
+                $vpnScore     += $score;
+                $indicators[] = $indicator;
+            }
         }
 
         // Calculate result

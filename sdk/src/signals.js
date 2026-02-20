@@ -3,6 +3,14 @@
  * Gathers browser and device signals for the detection API.
  */
 
+// ─── Network probe constants ───────────────────────────────────────────────
+// Cloudflare's /cdn-cgi/trace returns which CF PoP the *browser's* network
+// path hits — independent of which PoP our API Worker uses.
+// Response fields we care about: colo (e.g. "AMD"), ip (real client IP).
+const CF_TRACE_URL     = 'https://www.cloudflare.com/cdn-cgi/trace';
+const PROBE_TIMEOUT_MS = 2500;
+// ──────────────────────────────────────────────────────────────────────────
+
 const REGIONAL_LANGUAGE_CODES = new Set([
     'as', 'bn', 'bho', 'doi', 'gu', 'hi', 'kn', 'kok', 'mai', 'ml',
     'mni', 'mr', 'ne', 'or', 'pa', 'sat', 'sd', 'ta', 'te', 'ur',
@@ -112,6 +120,85 @@ function buildLanguageAnalysis(languages) {
         regional: regional,
         total_languages: languages.length,
     };
+}
+
+/**
+ * Probe the network to collect topology signals for accurate location detection.
+ *
+ * Fetches Cloudflare's /cdn-cgi/trace from the BROWSER (not from our server).
+ * This independently reveals:
+ *   - colo: which CF PoP is nearest to the user's physical location
+ *   - ip:   the IP Cloudflare sees from the browser (exposes split-tunnel VPN)
+ *   - RTT:  round-trip time to the nearest CF PoP (refines city radius)
+ *
+ * Also collects navigator.connection for connection type and quality.
+ * Runs in under 2.5 seconds (hard timeout) and fails silently.
+ *
+ * @returns {Promise<object|null>}
+ */
+export async function probeNetwork() {
+    const result = {};
+
+    const cfTrace = await probeCfTrace();
+    if (cfTrace) {
+        result.cf_trace = cfTrace;
+    }
+
+    // navigator.connection — passive signal, no permission required
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn) {
+        result.connection = {
+            type:           conn.type           || null,
+            effective_type: conn.effectiveType  || null,
+            rtt:            conn.rtt            !== undefined ? conn.rtt      : null,
+            downlink:       conn.downlink       !== undefined ? conn.downlink : null,
+        };
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Fetch Cloudflare's trace endpoint and parse the key=value response.
+ * @returns {Promise<{colo: string, ip: string, rtt_ms: number}|null>}
+ */
+async function probeCfTrace() {
+    if (typeof fetch === 'undefined' || typeof performance === 'undefined') {
+        return null;
+    }
+
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+
+    try {
+        const t0       = performance.now();
+        const response = await fetch(CF_TRACE_URL, {
+            method:  'GET',
+            cache:   'no-store',
+            signal:  controller.signal,
+        });
+        const rttMs = Math.round(performance.now() - t0);
+        clearTimeout(timer);
+
+        if (!response.ok) return null;
+
+        const text = await response.text();
+
+        const parseField = (key) => {
+            const m = text.match(new RegExp(key + '=([^\\n]+)'));
+            return m ? m[1].trim() : null;
+        };
+
+        const colo = parseField('colo');
+        const ip   = parseField('ip');
+
+        if (!colo) return null;
+
+        return { colo, ip, rtt_ms: rttMs };
+    } catch (_e) {
+        clearTimeout(timer);
+        return null;
+    }
 }
 
 function detectRegionalFonts() {
