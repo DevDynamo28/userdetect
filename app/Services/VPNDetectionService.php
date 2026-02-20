@@ -38,9 +38,10 @@ class VPNDetectionService
             $indicators[] = 'datacenter_asn';
         }
 
-        // Check 2: VPN keywords in hostname (+30)
+        // Check 2: VPN keywords in hostname (+50)
+        // Explicit VPN/proxy naming in reverse DNS is a strong indicator.
         if ($reverseDNS && $this->hasVpnKeywords($reverseDNS)) {
-            $vpnScore += 30;
+            $vpnScore += 50;
             $indicators[] = 'vpn_hostname';
         }
 

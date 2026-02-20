@@ -30,6 +30,7 @@ class AnalyticsSummaryResource extends JsonResource
                     : 0,
             ],
             'confidence_distribution' => $data['confidence_distribution'],
+            'quality_metrics' => $data['quality_metrics'] ?? null,
         ];
     }
 }

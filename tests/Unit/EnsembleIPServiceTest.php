@@ -14,6 +14,15 @@ class EnsembleIPServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('detection.methods.ensemble_ip.allow_insecure_sources', true);
+        config()->set('detection.methods.ensemble_ip.enabled_sources', [
+            'ipapi',
+            'ip-api',
+            'geoplugin',
+            'ipwhois',
+            'ipwho',
+            'freeipapi',
+        ]);
         $this->service = new EnsembleIPService();
         Cache::flush();
     }

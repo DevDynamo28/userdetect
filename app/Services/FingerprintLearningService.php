@@ -18,6 +18,14 @@ class FingerprintLearningService
             return;
         }
 
+        if (!$detection->client_id) {
+            return;
+        }
+
+        if (config('detection.learning.require_verified_location', true) && !$detection->is_location_verified) {
+            return;
+        }
+
         if (!$detection->detected_city || $detection->confidence < config('detection.learning.min_confidence_to_learn', 80)) {
             return;
         }
@@ -28,10 +36,7 @@ class FingerprintLearningService
         }
 
         try {
-            $existing = DB::selectOne(
-                'SELECT * FROM ip_range_learnings WHERE ip_range = ?::cidr LIMIT 1',
-                [$cidr]
-            );
+            $existing = $this->findExistingRange($detection->client_id, $cidr);
 
             if ($existing) {
                 $this->updateExisting($existing, $detection);
@@ -46,28 +51,45 @@ class FingerprintLearningService
     /**
      * Check if we have learned data for an IP address.
      */
-    public function checkIPRangeLearnings(string $ip): ?array
+    public function checkIPRangeLearnings(string $clientId, string $ip): ?array
     {
         if (!config('detection.learning.enabled', true)) {
             return null;
         }
 
         try {
-            $result = DB::selectOne(
-                'SELECT learned_city, learned_state, success_rate, sample_count
-                 FROM ip_range_learnings
-                 WHERE ip_range >>= ?::inet
-                   AND is_active = true
-                   AND sample_count >= ?
-                   AND success_rate >= ?
-                 ORDER BY sample_count DESC
-                 LIMIT 1',
-                [
-                    $ip,
-                    config('detection.learning.min_samples_for_active', 10),
-                    config('detection.learning.min_success_rate', 70),
-                ]
-            );
+            if ($this->isPostgres()) {
+                $result = DB::selectOne(
+                    'SELECT learned_city, learned_state, success_rate, sample_count
+                     FROM ip_range_learnings
+                     WHERE (client_id = ? OR client_id IS NULL)
+                       AND ip_range >>= ?::inet
+                       AND is_active = true
+                       AND sample_count >= ?
+                       AND success_rate >= ?
+                     ORDER BY CASE WHEN client_id = ? THEN 0 ELSE 1 END, sample_count DESC
+                     LIMIT 1',
+                    [
+                        $clientId,
+                        $ip,
+                        config('detection.learning.min_samples_for_active', 10),
+                        config('detection.learning.min_success_rate', 70),
+                        $clientId,
+                    ]
+                );
+            } else {
+                $cidr = $this->ipToCidr($ip);
+                $result = IpRangeLearning::query()
+                    ->select(['learned_city', 'learned_state', 'success_rate', 'sample_count'])
+                    ->where(fn($q) => $q->where('client_id', $clientId)->orWhereNull('client_id'))
+                    ->where('is_active', true)
+                    ->where('sample_count', '>=', config('detection.learning.min_samples_for_active', 10))
+                    ->where('success_rate', '>=', config('detection.learning.min_success_rate', 70))
+                    ->when($cidr, fn($q) => $q->where('ip_range', $cidr))
+                    ->orderByRaw('CASE WHEN client_id = ? THEN 0 ELSE 1 END', [$clientId])
+                    ->orderByDesc('sample_count')
+                    ->first();
+            }
 
             if ($result) {
                 return [
@@ -110,23 +132,16 @@ class FingerprintLearningService
             $newSuccessRate = round(($consistentCount / $newSampleCount) * 100, 2);
             $newAvgConfidence = (($existing->average_confidence ?? $detection->confidence) * $existing->sample_count + $detection->confidence) / $newSampleCount;
 
-            DB::update(
-                'UPDATE ip_range_learnings
-                 SET sample_count = ?,
-                     success_rate = ?,
-                     average_confidence = ?,
-                     last_seen = NOW(),
-                     is_active = CASE WHEN ? >= ? AND ? >= ? THEN true ELSE is_active END
-                 WHERE id = ?',
-                [
-                    $newSampleCount,
-                    $newSuccessRate,
-                    round($newAvgConfidence, 2),
-                    $newSampleCount, config('detection.learning.min_samples_for_active', 10),
-                    $newSuccessRate, config('detection.learning.min_success_rate', 70),
-                    $existing->id,
-                ]
-            );
+            IpRangeLearning::query()
+                ->where('id', $existing->id)
+                ->update([
+                    'sample_count' => $newSampleCount,
+                    'success_rate' => $newSuccessRate,
+                    'average_confidence' => round($newAvgConfidence, 2),
+                    'last_seen' => now(),
+                    'is_active' => $newSampleCount >= config('detection.learning.min_samples_for_active', 10)
+                        && $newSuccessRate >= config('detection.learning.min_success_rate', 70),
+                ]);
         } else {
             // City differs — reduce reliability
             $consistentCount = round(($existing->success_rate / 100) * $existing->sample_count);
@@ -134,15 +149,14 @@ class FingerprintLearningService
 
             $isActive = $newSuccessRate >= 60; // Deactivate if too unreliable
 
-            DB::update(
-                'UPDATE ip_range_learnings
-                 SET sample_count = ?,
-                     success_rate = ?,
-                     last_seen = NOW(),
-                     is_active = ?
-                 WHERE id = ?',
-                [$newSampleCount, $newSuccessRate, $isActive, $existing->id]
-            );
+            IpRangeLearning::query()
+                ->where('id', $existing->id)
+                ->update([
+                    'sample_count' => $newSampleCount,
+                    'success_rate' => $newSuccessRate,
+                    'last_seen' => now(),
+                    'is_active' => $isActive,
+                ]);
 
             Log::channel('detection')->info(
                 "IP range learning conflict: {$existing->learned_city} vs {$detection->detected_city} for range, success_rate now {$newSuccessRate}%"
@@ -152,18 +166,40 @@ class FingerprintLearningService
 
     private function createNew(string $cidr, UserDetection $detection): void
     {
-        DB::insert(
-            'INSERT INTO ip_range_learnings (id, ip_range, learned_city, learned_state, sample_count, success_rate, average_confidence, primary_isp, primary_asn, reverse_dns_pattern, first_seen, last_seen, is_active)
-             VALUES (gen_random_uuid(), ?::cidr, ?, ?, 1, 100.00, ?, ?, ?, ?, NOW(), NOW(), false)',
-            [
-                $cidr,
-                $detection->detected_city,
-                $detection->detected_state ?? 'Unknown',
-                $detection->confidence,
-                $detection->isp,
-                $detection->asn,
-                $detection->reverse_dns,
-            ]
-        );
+        IpRangeLearning::query()->create([
+            'client_id' => $detection->client_id,
+            'ip_range' => $cidr,
+            'learned_city' => $detection->detected_city,
+            'learned_state' => $detection->detected_state ?? 'Unknown',
+            'sample_count' => 1,
+            'success_rate' => 100.00,
+            'average_confidence' => $detection->confidence,
+            'primary_isp' => $detection->isp,
+            'primary_asn' => $detection->asn,
+            'reverse_dns_pattern' => $detection->reverse_dns,
+            'first_seen' => now(),
+            'last_seen' => now(),
+            'is_active' => false,
+        ]);
+    }
+
+    private function findExistingRange(string $clientId, string $cidr): ?object
+    {
+        if ($this->isPostgres()) {
+            return DB::selectOne(
+                'SELECT * FROM ip_range_learnings WHERE client_id = ? AND ip_range = ?::cidr LIMIT 1',
+                [$clientId, $cidr]
+            );
+        }
+
+        return IpRangeLearning::query()
+            ->where('client_id', $clientId)
+            ->where('ip_range', $cidr)
+            ->first();
+    }
+
+    private function isPostgres(): bool
+    {
+        return DB::connection()->getDriverName() === 'pgsql';
     }
 }

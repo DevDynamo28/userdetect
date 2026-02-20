@@ -32,15 +32,30 @@ class AnalyticsApiTest extends TestCase
         ]);
 
         // Seed some detections
+        $confidences = [90, 82, 54, 40, 76, 88, 52, 61, 49, 95];
         for ($i = 0; $i < 10; $i++) {
+            $detectedCity = ['Ahmedabad', 'Mumbai', 'Delhi'][$i % 3];
+            $verifiedCity = $i < 4
+                ? ($i === 2 ? 'Pune' : $detectedCity)
+                : null;
+            $isVerified = $verifiedCity !== null && strcasecmp($verifiedCity, $detectedCity) === 0;
+
             UserDetection::create([
                 'client_id' => $this->client->id,
                 'fingerprint_id' => hash('sha256', "fp_{$i}"),
-                'detected_city' => ['Ahmedabad', 'Mumbai', 'Delhi'][$i % 3],
+                'detected_city' => $detectedCity,
                 'detected_state' => ['Gujarat', 'Maharashtra', 'Delhi'][$i % 3],
-                'confidence' => rand(60, 95),
+                'confidence' => $confidences[$i],
                 'detection_method' => ['reverse_dns', 'ensemble_ip'][$i % 2],
                 'is_vpn' => $i === 0,
+                'city_disagreement_count' => in_array($i, [0, 5], true) ? 1 : 0,
+                'state_disagreement_count' => in_array($i, [4, 8], true) ? 1 : 0,
+                'verified_city' => $verifiedCity,
+                'verified_state' => $verifiedCity ? ['Gujarat', 'Maharashtra', 'Delhi'][$i % 3] : null,
+                'verified_country' => $verifiedCity ? 'India' : null,
+                'is_location_verified' => $isVerified,
+                'verification_source' => $verifiedCity ? 'checkout' : null,
+                'verification_received_at' => $verifiedCity ? now()->subMinutes(5) : null,
                 'ip_address' => '103.0.0.' . ($i + 1),
                 'detected_at' => now()->subHours($i),
             ]);
@@ -62,6 +77,21 @@ class AnalyticsApiTest extends TestCase
                 'detection_methods',
                 'vpn_stats' => ['total_vpn_detected', 'percentage'],
                 'confidence_distribution',
+                'quality_metrics' => [
+                    'city_hit_rate',
+                    'city_hit_rate_by_method',
+                    'low_confidence_count',
+                    'low_confidence_rate',
+                    'disagreement_count',
+                    'disagreement_rate',
+                    'disagreement_rate_by_method',
+                    'verified_label_total',
+                    'verified_label_matches',
+                    'verified_label_mismatches',
+                    'verified_label_coverage_rate',
+                    'verified_label_accuracy_rate',
+                    'verified_accuracy_by_method',
+                ],
             ])
             ->assertJson([
                 'success' => true,
@@ -80,6 +110,13 @@ class AnalyticsApiTest extends TestCase
         $data = $response->json();
         $this->assertEquals(10, $data['usage']['total_requests']);
         $this->assertEquals(1, $data['vpn_stats']['total_vpn_detected']);
+        $this->assertEquals(100.0, $data['quality_metrics']['city_hit_rate']);
+        $this->assertEquals(4, $data['quality_metrics']['low_confidence_count']);
+        $this->assertEquals(4, $data['quality_metrics']['disagreement_count']);
+        $this->assertEquals(4, $data['quality_metrics']['verified_label_total']);
+        $this->assertEquals(3, $data['quality_metrics']['verified_label_matches']);
+        $this->assertEquals(1, $data['quality_metrics']['verified_label_mismatches']);
+        $this->assertEquals(75.0, $data['quality_metrics']['verified_label_accuracy_rate']);
     }
 
     public function test_analytics_without_api_key_returns_401(): void

@@ -15,15 +15,35 @@ class AnalyticsDashboardController extends Controller
         $period = $request->query('period', 'last_7_days');
 
         $query = UserDetection::forClient($client->id)->forPeriod($period);
+        $driver = DB::connection()->getDriverName();
+        $hourBucketExpression = match ($driver) {
+            'pgsql' => "DATE_TRUNC('hour', detected_at)",
+            'sqlite' => "strftime('%Y-%m-%d %H:00:00', detected_at)",
+            default => "DATE_FORMAT(detected_at, '%Y-%m-%d %H:00:00')",
+        };
 
         $totalRequests = (clone $query)->count();
         $uniqueUsers = (clone $query)->distinct('fingerprint_id')->count('fingerprint_id');
         $avgConfidence = (int) (clone $query)->avg('confidence') ?: 0;
+        $lowConfidenceThreshold = 55;
+        $cityHitCount = (clone $query)->whereNotNull('detected_city')->count();
+        $lowConfidenceCount = (clone $query)->where('confidence', '<', $lowConfidenceThreshold)->count();
+        $disagreementCount = (clone $query)
+            ->where(function ($q) {
+                $q->where('city_disagreement_count', '>', 0)
+                    ->orWhere('state_disagreement_count', '>', 0);
+            })
+            ->count();
+        $verifiedTotal = (clone $query)->whereNotNull('verified_city')->count();
+        $verifiedMatches = (clone $query)
+            ->whereNotNull('verified_city')
+            ->where('is_location_verified', true)
+            ->count();
 
         // Hourly breakdown
         $hourlyData = (clone $query)
             ->select(
-                DB::raw("DATE_TRUNC('hour', detected_at) as hour"),
+                DB::raw("{$hourBucketExpression} as hour"),
                 DB::raw('COUNT(*) as count')
             )
             ->groupBy('hour')
@@ -46,6 +66,70 @@ class AnalyticsDashboardController extends Controller
             ->select('detection_method', DB::raw('COUNT(*) as count'))
             ->groupBy('detection_method')
             ->pluck('count', 'detection_method')
+            ->toArray();
+
+        $cityHitByMethod = (clone $query)
+            ->select(
+                'detection_method',
+                DB::raw('COUNT(*) as total'),
+                DB::raw('SUM(CASE WHEN detected_city IS NOT NULL THEN 1 ELSE 0 END) as city_hits')
+            )
+            ->groupBy('detection_method')
+            ->get()
+            ->map(function ($row) {
+                $total = (int) $row->total;
+                $hits = (int) $row->city_hits;
+
+                return [
+                    'method' => $row->detection_method,
+                    'total' => $total,
+                    'city_hits' => $hits,
+                    'city_hit_rate' => $total > 0 ? round(($hits / $total) * 100, 1) : 0.0,
+                ];
+            })
+            ->toArray();
+
+        $disagreementByMethod = (clone $query)
+            ->select(
+                'detection_method',
+                DB::raw('COUNT(*) as total'),
+                DB::raw('SUM(CASE WHEN COALESCE(city_disagreement_count, 0) > 0 OR COALESCE(state_disagreement_count, 0) > 0 THEN 1 ELSE 0 END) as disagreements')
+            )
+            ->groupBy('detection_method')
+            ->get()
+            ->map(function ($row) {
+                $total = (int) $row->total;
+                $disagreements = (int) $row->disagreements;
+
+                return [
+                    'method' => $row->detection_method,
+                    'total' => $total,
+                    'disagreements' => $disagreements,
+                    'disagreement_rate' => $total > 0 ? round(($disagreements / $total) * 100, 1) : 0.0,
+                ];
+            })
+            ->toArray();
+
+        $verifiedAccuracyByMethod = (clone $query)
+            ->whereNotNull('verified_city')
+            ->select(
+                'detection_method',
+                DB::raw('COUNT(*) as verified_total'),
+                DB::raw('SUM(CASE WHEN is_location_verified THEN 1 ELSE 0 END) as verified_matches')
+            )
+            ->groupBy('detection_method')
+            ->get()
+            ->map(function ($row) {
+                $total = (int) $row->verified_total;
+                $matches = (int) $row->verified_matches;
+
+                return [
+                    'method' => $row->detection_method,
+                    'verified_total' => $total,
+                    'verified_matches' => $matches,
+                    'accuracy_rate' => $total > 0 ? round(($matches / $total) * 100, 1) : 0.0,
+                ];
+            })
             ->toArray();
 
         // VPN trend (daily)
@@ -72,6 +156,14 @@ class AnalyticsDashboardController extends Controller
             ->map(fn ($v) => round($v))
             ->toArray();
 
+        $qualityMetrics = [
+            'city_hit_rate' => $totalRequests > 0 ? round(($cityHitCount / $totalRequests) * 100, 1) : 0.0,
+            'low_confidence_rate' => $totalRequests > 0 ? round(($lowConfidenceCount / $totalRequests) * 100, 1) : 0.0,
+            'disagreement_rate' => $totalRequests > 0 ? round(($disagreementCount / $totalRequests) * 100, 1) : 0.0,
+            'verified_label_coverage_rate' => $totalRequests > 0 ? round(($verifiedTotal / $totalRequests) * 100, 1) : 0.0,
+            'verified_label_accuracy_rate' => $verifiedTotal > 0 ? round(($verifiedMatches / $verifiedTotal) * 100, 1) : 0.0,
+        ];
+
         return view('dashboard.analytics', compact(
             'period',
             'totalRequests',
@@ -81,7 +173,11 @@ class AnalyticsDashboardController extends Controller
             'geoData',
             'methodData',
             'vpnTrend',
-            'confTrend'
+            'confTrend',
+            'qualityMetrics',
+            'cityHitByMethod',
+            'disagreementByMethod',
+            'verifiedAccuracyByMethod'
         ));
     }
 

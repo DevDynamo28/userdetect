@@ -25,7 +25,6 @@ class SignalFusionService
     public function inferLocation(string $ip, array $signals, Request $request): array
     {
         $evidence = [];
-        $fallbackReason = null;
 
         // 1. Cloudflare geo headers (most accurate passive source)
         $cfEvidence = $this->fromCloudflareHeaders($request);
@@ -53,9 +52,8 @@ class SignalFusionService
             $evidence[] = $dnsEvidence;
 
         // 6. Ensemble IP APIs (last resort, only if we have weak evidence)
-        $totalWeight = array_sum(array_column($evidence, 'weight'));
-        if ($totalWeight < 30 || !$this->hasAnyCityEvidence($evidence)) {
-            $fallbackReason = $totalWeight < 30 ? 'low_evidence_weight' : 'no_city_evidence';
+        $fallbackReason = $this->determineEnsembleFallbackReason($evidence);
+        if ($fallbackReason !== null) {
             $apiEvidence = $this->fromEnsembleAPIs($ip);
             if ($apiEvidence)
                 $evidence[] = $apiEvidence;
@@ -138,7 +136,7 @@ class SignalFusionService
             'city' => null, // Language only gives state-level
             'state' => $langResult['primary_state'],
             'states' => $langResult['states'],
-            'country' => 'India',
+            'country' => null,
             'confidence' => $langResult['confidence'],
             'weight' => config('detection.signal_weights.language_inference', 25),
             'meta' => [
@@ -161,7 +159,7 @@ class SignalFusionService
             'source' => 'fonts',
             'city' => null,
             'state' => $fontResult['state'],
-            'country' => 'India',
+            'country' => null,
             'confidence' => $fontResult['confidence'],
             'weight' => config('detection.signal_weights.font_detection', 8),
         ];
@@ -212,9 +210,12 @@ class SignalFusionService
             'source' => 'reverse_dns',
             'city' => $result['city'],
             'state' => $result['state'],
-            'country' => 'India',
+            'country' => config('detection.default_country', 'India'),
             'confidence' => $result['confidence'],
             'weight' => config('detection.signal_weights.reverse_dns', 15),
+            'meta' => [
+                'hostname' => $hostname,
+            ],
         ];
     }
 
@@ -233,7 +234,7 @@ class SignalFusionService
             'source' => 'ensemble_ip',
             'city' => $result['city'] ?? null,
             'state' => $result['state'] ?? null,
-            'country' => 'India',
+            'country' => $result['country'] ?? config('detection.default_country', 'India'),
             'latitude' => $result['latitude'] ?? null,
             'longitude' => $result['longitude'] ?? null,
             'confidence' => $result['confidence'] ?? 50,
@@ -260,7 +261,7 @@ class SignalFusionService
             return [
                 'city' => null,
                 'state' => null,
-                'country' => 'India',
+                'country' => config('detection.default_country', 'India'),
                 'confidence' => 0,
                 'method' => 'none',
                 'latitude' => null,
@@ -268,6 +269,7 @@ class SignalFusionService
                 'sources_data' => null,
                 'asn' => null,
                 'isp' => null,
+                'reverse_dns_hostname' => null,
             ];
         }
 
@@ -376,6 +378,8 @@ class SignalFusionService
         $asn = null;
         $isp = null;
         $sourcesData = null;
+        $countryVotes = [];
+        $reverseDnsHostname = null;
         foreach ($evidence as $e) {
             if (!empty($e['meta']['asn']))
                 $asn = $e['meta']['asn'];
@@ -383,12 +387,31 @@ class SignalFusionService
                 $isp = $e['meta']['isp'];
             if (!empty($e['sources_data']))
                 $sourcesData = $e['sources_data'];
+            if (!empty($e['country'])) {
+                $normalizedCountry = strtoupper(trim((string) $e['country']));
+                if (!isset($countryVotes[$normalizedCountry])) {
+                    $countryVotes[$normalizedCountry] = [
+                        'weight' => 0.0,
+                        'display' => $e['country'],
+                    ];
+                }
+                $countryVotes[$normalizedCountry]['weight'] += (float) ($e['weight'] ?? 1);
+            }
+            if (($e['source'] ?? null) === 'reverse_dns' && !empty($e['meta']['hostname'])) {
+                $reverseDnsHostname = $e['meta']['hostname'];
+            }
+        }
+
+        $bestCountry = config('detection.default_country', 'India');
+        if (!empty($countryVotes)) {
+            uasort($countryVotes, fn($a, $b) => $b['weight'] <=> $a['weight']);
+            $bestCountry = reset($countryVotes)['display'] ?? $bestCountry;
         }
 
         return [
             'city' => $bestCityDisplay,
             'state' => $bestStateDisplay,
-            'country' => 'India',
+            'country' => $bestCountry,
             'confidence' => $confidence,
             'method' => $bestMethod,
             'latitude' => $latitude,
@@ -396,6 +419,7 @@ class SignalFusionService
             'asn' => $asn,
             'isp' => $isp,
             'sources_data' => $sourcesData,
+            'reverse_dns_hostname' => $reverseDnsHostname,
             'fusion_debug' => [
                 'total_sources' => count($evidence),
                 'state_votes' => array_map(fn($v) => ['weight' => round($v['weight'], 1), 'sources' => $v['sources']], $stateVotes),
@@ -533,6 +557,58 @@ class SignalFusionService
                 return true;
         }
         return false;
+    }
+
+    private function determineEnsembleFallbackReason(array $evidence): ?string
+    {
+        if (empty($evidence)) {
+            return 'no_primary_evidence';
+        }
+
+        $totalWeight = array_sum(array_column($evidence, 'weight'));
+        if ($totalWeight < 30) {
+            return 'low_evidence_weight';
+        }
+
+        $cityEvidence = array_values(array_filter($evidence, fn($entry) => !empty($entry['city'])));
+        if (empty($cityEvidence)) {
+            return 'no_city_evidence';
+        }
+
+        if (count($cityEvidence) === 1 && ($cityEvidence[0]['source'] ?? '') !== 'cloudflare') {
+            return 'single_city_source';
+        }
+
+        $cityWeights = [];
+        foreach ($cityEvidence as $entry) {
+            $cityKey = strtolower(trim((string) $entry['city']));
+            $cityWeights[$cityKey] = ($cityWeights[$cityKey] ?? 0) + ($entry['weight'] ?? 1);
+        }
+
+        if (count($cityWeights) > 1) {
+            arsort($cityWeights);
+            $topWeights = array_values($cityWeights);
+            $top = $topWeights[0] ?? 0;
+            $second = $topWeights[1] ?? 0;
+
+            if ($top > 0 && ($second / $top) >= 0.55) {
+                return 'city_disagreement';
+            }
+        }
+
+        $cityConfidence = array_values(array_filter(array_map(
+            fn($entry) => $entry['city'] ? (int) ($entry['confidence'] ?? 0) : null,
+            $cityEvidence
+        )));
+
+        if (!empty($cityConfidence)) {
+            $avg = array_sum($cityConfidence) / count($cityConfidence);
+            if ($avg < 70) {
+                return 'weak_city_confidence';
+            }
+        }
+
+        return null;
     }
 
     private function buildQualityTelemetry(array $evidence, array $result, ?string $fallbackReason): array

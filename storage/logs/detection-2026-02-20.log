@@ -1,0 +1,219 @@
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 6/6 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Ahmedabad]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Surat, state=Gujarat, lat=21.1702, lng=72.8311  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 5/6 sources in best cluster, city=Ahmedabad, clusters=2, sources=[ipapi,ip-api,ipwhois,ipwho,freeipapi], cities=[Ahmedabad]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Gandhinagar, state=Gujarat, lat=23.2156, lng=72.6369  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Gandhinagar, state=Gujarat, lat=23.2156, lng=72.6369  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 6/6 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Ahmedabad,Gandhinagar]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Chennai, state=Tamil Nadu, lat=13.0827, lng=80.2707  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Kolkata, state=West Bengal, lat=22.5726, lng=88.3639  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 1/6 sources in best cluster, city=Mumbai, clusters=6, sources=[ip-api], cities=[Mumbai]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [ip-api] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [geoplugin] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [ipwhois] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [ipwho] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [freeipapi] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 1/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 1/1 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi], cities=[Ahmedabad]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=, lat=, lng=  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [geoplugin] for 103.50.100.5: normalized to null (invalid data)  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:46:51] testing.WARNING: Ensemble [freeipapi] for 103.50.100.5: normalized to null (invalid data)  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 4/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 4/4 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ipwhois,ipwho,ip-api], cities=[Ahmedabad]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 49.36.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 49.36.100.5: 6/6 sources in best cluster, city=Bangalore, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Bangalore]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 103.50.100.5: 3/6 sources in best cluster, city=Mumbai, clusters=2, sources=[ip-api,ipwhois,ipwho], cities=[Mumbai]  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipapi] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ip-api] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [geoplugin] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwhois] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [ipwho] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble [freeipapi] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:46:51] testing.INFO: Ensemble for 122.161.68.1: 6/6 sources responded  
+[2026-02-20 13:46:51] testing.INFO: Ensemble consensus for 122.161.68.1: 6/6 sources in best cluster, city=Delhi, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Delhi]  
+[2026-02-20 13:46:51] testing.INFO: Reverse DNS match: host123.ahmedabad.gtpl.net.in -> Ahmedabad via gtpl pattern  
+[2026-02-20 13:46:51] testing.INFO: Reverse DNS match: abts-mumbai-dynamic.airtelbroadband.in -> Mumbai via airtel pattern  
+[2026-02-20 13:46:51] testing.INFO: Reverse DNS match: host.pune.hathway.com -> Pune via hathway pattern  
+[2026-02-20 13:46:51] testing.INFO: Reverse DNS match: host123.delhi.bsnl.in -> Delhi via bsnl pattern  
+[2026-02-20 13:46:51] testing.INFO: VPN detected for IP 1.2.3.4: score=65, indicators=datacenter_asn,hosting_provider  
+[2026-02-20 13:46:51] testing.INFO: VPN detected for IP 1.2.3.4: score=50, indicators=vpn_hostname  
+[2026-02-20 13:46:51] testing.INFO: VPN detected for IP 1.2.3.4: score=65, indicators=datacenter_asn,hosting_provider  
+[2026-02-20 13:46:58] testing.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 13:46:58] testing.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 13:47:03] testing.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP 429  
+[2026-02-20 13:47:03] testing.INFO: Ensemble [ipwhois] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:47:03] testing.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:47:03] testing.INFO: Ensemble [freeipapi] for 106.215.153.11: city=Bhuj, state=Gujarat, lat=23.254, lng=69.6693  
+[2026-02-20 13:47:03] testing.INFO: Ensemble for 106.215.153.11: 3/4 sources responded  
+[2026-02-20 13:47:03] testing.INFO: Ensemble consensus for 106.215.153.11: 3/3 sources in best cluster, city=Mundra, clusters=1, sources=[ipwhois,ipwho,freeipapi], cities=[Mundra,Bhuj]  
+[2026-02-20 13:47:03] testing.INFO: Signal fusion result {"ip":"106.215.153.11","sources":2,"city":"Mundra","state":"Gujarat","confidence":48,"method":"ensemble_ip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 13:47:08] testing.WARNING: Detection exceeded latency SLO target {"processing_time_ms":10256,"target_p95_ms":700,"method":"ensemble_ip"} 
+[2026-02-20 13:47:10] testing.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 13:47:10] testing.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 13:47:16] testing.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP 429  
+[2026-02-20 13:47:16] testing.INFO: Ensemble [ipwhois] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:47:16] testing.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:47:16] testing.INFO: Ensemble [freeipapi] for 106.215.153.11: city=Bhuj, state=Gujarat, lat=23.254, lng=69.6693  
+[2026-02-20 13:47:16] testing.INFO: Ensemble for 106.215.153.11: 3/4 sources responded  
+[2026-02-20 13:47:16] testing.INFO: Ensemble consensus for 106.215.153.11: 3/3 sources in best cluster, city=Mundra, clusters=1, sources=[ipwhois,ipwho,freeipapi], cities=[Mundra,Bhuj]  
+[2026-02-20 13:47:16] testing.INFO: Signal fusion result {"ip":"106.215.153.11","sources":2,"city":"Mundra","state":"Gujarat","confidence":48,"method":"ensemble_ip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 13:47:21] testing.WARNING: Detection exceeded latency SLO target {"processing_time_ms":11338,"target_p95_ms":700,"method":"ensemble_ip"} 
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 6/6 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Ahmedabad]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Surat, state=Gujarat, lat=21.1702, lng=72.8311  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 5/6 sources in best cluster, city=Ahmedabad, clusters=2, sources=[ipapi,ip-api,ipwhois,ipwho,freeipapi], cities=[Ahmedabad]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Gandhinagar, state=Gujarat, lat=23.2156, lng=72.6369  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Gandhinagar, state=Gujarat, lat=23.2156, lng=72.6369  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 6/6 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Ahmedabad,Gandhinagar]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Chennai, state=Tamil Nadu, lat=13.0827, lng=80.2707  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Kolkata, state=West Bengal, lat=22.5726, lng=88.3639  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 1/6 sources in best cluster, city=Mumbai, clusters=6, sources=[ip-api], cities=[Mumbai]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [ip-api] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [geoplugin] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [ipwhois] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [ipwho] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [freeipapi] for 103.50.100.5: HTTP 500  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 1/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 1/1 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi], cities=[Ahmedabad]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Ahmedabad, state=, lat=, lng=  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [geoplugin] for 103.50.100.5: normalized to null (invalid data)  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Ahmedabad, state=Gujarat, lat=23.0225, lng=72.5714  
+[2026-02-20 13:50:03] testing.WARNING: Ensemble [freeipapi] for 103.50.100.5: normalized to null (invalid data)  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 4/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 4/4 sources in best cluster, city=Ahmedabad, clusters=1, sources=[ipapi,ipwhois,ipwho,ip-api], cities=[Ahmedabad]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 49.36.100.5: city=Bangalore, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 49.36.100.5: city=Bengaluru, state=Karnataka, lat=12.9716, lng=77.5946  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 49.36.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 49.36.100.5: 6/6 sources in best cluster, city=Bangalore, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Bangalore]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 103.50.100.5: city=Mumbai, state=Maharashtra, lat=19.076, lng=72.8777  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 103.50.100.5: city=Pune, state=Maharashtra, lat=18.5204, lng=73.8567  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 103.50.100.5: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 103.50.100.5: 3/6 sources in best cluster, city=Mumbai, clusters=2, sources=[ip-api,ipwhois,ipwho], cities=[Mumbai]  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipapi] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ip-api] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [geoplugin] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwhois] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [ipwho] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble [freeipapi] for 122.161.68.1: city=Delhi, state=Delhi, lat=28.6139, lng=77.209  
+[2026-02-20 13:50:03] testing.INFO: Ensemble for 122.161.68.1: 6/6 sources responded  
+[2026-02-20 13:50:03] testing.INFO: Ensemble consensus for 122.161.68.1: 6/6 sources in best cluster, city=Delhi, clusters=1, sources=[ipapi,ip-api,geoplugin,ipwhois,ipwho,freeipapi], cities=[Delhi]  
+[2026-02-20 13:50:03] testing.INFO: Reverse DNS match: host123.ahmedabad.gtpl.net.in -> Ahmedabad via gtpl pattern  
+[2026-02-20 13:50:03] testing.INFO: Reverse DNS match: abts-mumbai-dynamic.airtelbroadband.in -> Mumbai via airtel pattern  
+[2026-02-20 13:50:03] testing.INFO: Reverse DNS match: host.pune.hathway.com -> Pune via hathway pattern  
+[2026-02-20 13:50:03] testing.INFO: Reverse DNS match: host123.delhi.bsnl.in -> Delhi via bsnl pattern  
+[2026-02-20 13:50:03] testing.INFO: VPN detected for IP 1.2.3.4: score=65, indicators=datacenter_asn,hosting_provider  
+[2026-02-20 13:50:03] testing.INFO: VPN detected for IP 1.2.3.4: score=50, indicators=vpn_hostname  
+[2026-02-20 13:50:03] testing.INFO: VPN detected for IP 1.2.3.4: score=65, indicators=datacenter_asn,hosting_provider  
+[2026-02-20 13:50:09] testing.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 13:50:09] testing.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 13:50:17] testing.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP 429  
+[2026-02-20 13:50:17] testing.INFO: Ensemble [ipwhois] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:50:17] testing.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:50:17] testing.INFO: Ensemble [freeipapi] for 106.215.153.11: city=Bhuj, state=Gujarat, lat=23.254, lng=69.6693  
+[2026-02-20 13:50:17] testing.INFO: Ensemble for 106.215.153.11: 3/4 sources responded  
+[2026-02-20 13:50:17] testing.INFO: Ensemble consensus for 106.215.153.11: 3/3 sources in best cluster, city=Mundra, clusters=1, sources=[ipwhois,ipwho,freeipapi], cities=[Mundra,Bhuj]  
+[2026-02-20 13:50:17] testing.INFO: Signal fusion result {"ip":"106.215.153.11","sources":2,"city":"Mundra","state":"Gujarat","confidence":48,"method":"ensemble_ip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 13:50:21] testing.WARNING: Detection exceeded latency SLO target {"processing_time_ms":12494,"target_p95_ms":700,"method":"ensemble_ip"} 
+[2026-02-20 13:50:23] testing.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 13:50:23] testing.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 13:50:29] testing.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP 429  
+[2026-02-20 13:50:29] testing.INFO: Ensemble [ipwhois] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:50:29] testing.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 13:50:29] testing.INFO: Ensemble [freeipapi] for 106.215.153.11: city=Bhuj, state=Gujarat, lat=23.254, lng=69.6693  
+[2026-02-20 13:50:29] testing.INFO: Ensemble for 106.215.153.11: 3/4 sources responded  
+[2026-02-20 13:50:29] testing.INFO: Ensemble consensus for 106.215.153.11: 3/3 sources in best cluster, city=Mundra, clusters=1, sources=[ipwhois,ipwho,freeipapi], cities=[Mundra,Bhuj]  
+[2026-02-20 13:50:29] testing.INFO: Signal fusion result {"ip":"106.215.153.11","sources":2,"city":"Mundra","state":"Gujarat","confidence":48,"method":"ensemble_ip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 13:50:34] testing.WARNING: Detection exceeded latency SLO target {"processing_time_ms":11188,"target_p95_ms":700,"method":"ensemble_ip"} 
+[2026-02-20 15:52:38] testing.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 15:52:38] testing.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 15:52:47] testing.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP N/A  
+[2026-02-20 15:52:47] testing.WARNING: Ensemble [ipwhois] for 106.215.153.11: HTTP N/A  
+[2026-02-20 15:52:47] testing.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 15:52:47] testing.WARNING: Ensemble [freeipapi] for 106.215.153.11: HTTP N/A  
+[2026-02-20 15:52:47] testing.INFO: Ensemble for 106.215.153.11: 1/4 sources responded  
+[2026-02-20 15:52:47] testing.INFO: Ensemble consensus for 106.215.153.11: 1/1 sources in best cluster, city=Mundra, clusters=1, sources=[ipwho], cities=[Mundra]  
+[2026-02-20 15:52:47] testing.INFO: Signal fusion result {"ip":"106.215.153.11","sources":2,"city":"Bhubaneswar","state":"Gujarat","confidence":48,"method":"local_geoip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 15:52:51] testing.WARNING: Detection exceeded latency SLO target {"processing_time_ms":13275,"target_p95_ms":700,"method":"local_geoip"} 
+[2026-02-20 16:02:28] local.INFO: Using env test IP: 106.215.153.11  
+[2026-02-20 16:02:29] local.INFO: Font inference: 1 regional fonts detected → West Bengal (confidence: 45)  
+[2026-02-20 16:02:29] local.INFO: LocalGeoIP lookup for 106.215.153.11: city=Bhubaneswar, state=Odisha, lat=20.2706, lng=85.8334, accuracy_radius=1000km, confidence=67  
+[2026-02-20 16:02:35] local.WARNING: Ensemble [ipapi] for 106.215.153.11: HTTP 429  
+[2026-02-20 16:02:35] local.INFO: Ensemble [ipwhois] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 16:02:35] local.INFO: Ensemble [ipwho] for 106.215.153.11: city=Mundra, state=Gujarat, lat=22.8395202, lng=69.7213266  
+[2026-02-20 16:02:35] local.INFO: Ensemble [freeipapi] for 106.215.153.11: city=Bhuj, state=Gujarat, lat=23.254, lng=69.6693  
+[2026-02-20 16:02:35] local.INFO: Ensemble for 106.215.153.11: 3/4 sources responded  
+[2026-02-20 16:02:35] local.INFO: Ensemble consensus for 106.215.153.11: 3/3 sources in best cluster, city=Mundra, clusters=1, sources=[ipwhois,ipwho,freeipapi], cities=[Mundra,Bhuj]  
+[2026-02-20 16:02:35] local.INFO: Signal fusion result {"ip":"106.215.153.11","sources":3,"city":"Mundra","state":"Gujarat","confidence":43,"method":"ensemble_ip","fallback_reason":"low_evidence_weight","confidence_bucket":"very_low"} 
+[2026-02-20 16:02:40] local.WARNING: Detection exceeded latency SLO target {"processing_time_ms":11618,"target_p95_ms":700,"method":"ensemble_ip"} 

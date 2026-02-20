@@ -14,6 +14,8 @@ class EnsembleIPService
     private array $sourceWeights;
     private int $failureCircuitThreshold;
     private int $failureCircuitTtl;
+    private bool $allowInsecureSources;
+    private array $enabledSources;
 
     public function __construct()
     {
@@ -23,6 +25,8 @@ class EnsembleIPService
         $this->sourceWeights = config('detection.methods.ensemble_ip.source_weights', []);
         $this->failureCircuitThreshold = config('detection.methods.ensemble_ip.failure_circuit_threshold', 4);
         $this->failureCircuitTtl = config('detection.methods.ensemble_ip.failure_circuit_ttl_seconds', 120);
+        $this->allowInsecureSources = (bool) config('detection.methods.ensemble_ip.allow_insecure_sources', false);
+        $this->enabledSources = config('detection.methods.ensemble_ip.enabled_sources', []);
     }
 
     /**
@@ -50,7 +54,11 @@ class EnsembleIPService
             return $this->emptyResult($ip);
         }
 
-        $sources = config('detection.methods.ensemble_ip.sources');
+        $sources = $this->getActiveSources();
+        if (empty($sources)) {
+            Log::channel('detection')->warning('No active ensemble sources configured.');
+            return $this->emptyResult($ip);
+        }
         $responses = [];
 
         $sourceKeys = array_keys($sources);
@@ -278,6 +286,7 @@ class EnsembleIPService
 
             return array_merge($this->emptyResult($ip), [
                 'state' => $state,
+                'country' => $this->mostCommon(array_filter(array_column($responses, 'country'))) ?? config('detection.default_country', 'India'),
                 'sources_data' => $sourcesData,
             ]);
         }
@@ -342,13 +351,20 @@ class EnsembleIPService
 
         // State consensus from cluster
         $stateVotes = [];
+        $countryVotes = [];
         foreach ($bestCluster as $entry) {
             if (!empty($entry['state'])) {
                 $stateVotes[$entry['state']] = ($stateVotes[$entry['state']] ?? 0) + $entry['weight'];
             }
+            if (!empty($responses[$entry['source']]['country'])) {
+                $country = $responses[$entry['source']]['country'];
+                $countryVotes[$country] = ($countryVotes[$country] ?? 0) + $entry['weight'];
+            }
         }
         arsort($stateVotes);
+        arsort($countryVotes);
         $state = !empty($stateVotes) ? array_key_first($stateVotes) : null;
+        $country = !empty($countryVotes) ? array_key_first($countryVotes) : (config('detection.default_country', 'India'));
 
         // ISP / ASN from all responses
         $ispValues = array_filter(array_column($sourceEntries, 'isp'));
@@ -373,7 +389,7 @@ class EnsembleIPService
         return [
             'city' => $confidence >= 55 ? $city : null,
             'state' => $state,
-            'country' => 'India',
+            'country' => $country,
             'confidence' => $confidence,
             'agreement_count' => $agreementCount,
             'total_sources' => $totalSources,
@@ -601,7 +617,7 @@ class EnsembleIPService
         return [
             'city' => null,
             'state' => null,
-            'country' => 'India',
+            'country' => config('detection.default_country', 'India'),
             'confidence' => 0,
             'agreement_count' => 0,
             'total_sources' => 0,
@@ -661,5 +677,28 @@ class EnsembleIPService
     private function circuitOpenKey(): string
     {
         return 'ensemble:circuit:open';
+    }
+
+    private function getActiveSources(): array
+    {
+        $sources = config('detection.methods.ensemble_ip.sources', []);
+        if (empty($sources)) {
+            return [];
+        }
+
+        $enabled = array_fill_keys($this->enabledSources, true);
+
+        return array_filter($sources, function (string $url, string $key) use ($enabled) {
+            if (!empty($enabled) && !isset($enabled[$key])) {
+                return false;
+            }
+
+            $isInsecure = str_starts_with(strtolower($url), 'http://');
+            if ($isInsecure && !$this->allowInsecureSources) {
+                return false;
+            }
+
+            return true;
+        }, ARRAY_FILTER_USE_BOTH);
     }
 }

@@ -13,6 +13,7 @@ class IpRangeLearning extends Model
     public $timestamps = false;
 
     protected $fillable = [
+        'client_id',
         'ip_range',
         'learned_city',
         'learned_state',

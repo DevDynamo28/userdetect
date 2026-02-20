@@ -38,6 +38,15 @@ class UserDetection extends Model
         'timezone',
         'language',
         'ip_sources_data',
+        'verified_city',
+        'verified_state',
+        'verified_country',
+        'is_location_verified',
+        'verification_source',
+        'verification_received_at',
+        'state_disagreement_count',
+        'city_disagreement_count',
+        'fallback_reason',
         'processing_time_ms',
         'detected_at',
     ];
@@ -46,8 +55,10 @@ class UserDetection extends Model
     {
         return [
             'is_vpn' => 'boolean',
+            'is_location_verified' => 'boolean',
             'vpn_indicators' => 'array',
             'ip_sources_data' => 'array',
+            'verification_received_at' => 'datetime',
             'detected_at' => 'datetime',
         ];
     }

@@ -11,6 +11,7 @@
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Start Guide</h2>
         <div class="prose prose-sm max-w-none text-gray-700">
             <p>Get started with UserDetect in 3 simple steps:</p>
+            <p><strong>Privacy mode:</strong> detection is fully passive and does not trigger browser location permission prompts.</p>
 
             <h3 class="text-base font-medium text-gray-900 mt-4">Step 1: Add the SDK to your website</h3>
             <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto my-3">
@@ -134,6 +135,63 @@
             <p class="text-sm text-gray-600 mb-3">Get historical data for a specific user.</p>
         </div>
 
+        {{-- POST /user/{id}/verify-location --}}
+        <div class="mb-8">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-mono rounded">POST</span>
+                <code class="text-sm font-medium">/api/v1/user/{fingerprint_id}/verify-location</code>
+            </div>
+            <p class="text-sm text-gray-600 mb-3">Backfill verified location labels from checkout/profile/CRM events. This improves accuracy measurement and passive learning without requesting browser location permission.</p>
+
+            <h4 class="text-sm font-medium text-gray-900 mt-4 mb-2">Request Body</h4>
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-green-400"><code>{
+  "city": "Boston",
+  "state": "MA",
+  "country": "United States",
+  "source": "checkout",
+  "backfill_hours": 72,
+  "max_records": 100,
+  "event_timestamp": "2026-02-20T13:20:00Z"
+}</code></pre>
+            </div>
+
+            <h4 class="text-sm font-medium text-gray-900 mt-4 mb-2">Response</h4>
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-green-400"><code>{
+  "success": true,
+  "data": {
+    "fingerprint_id": "hashed_fingerprint",
+    "verification": {
+      "city": "Boston",
+      "state": "MA",
+      "country": "United States",
+      "source": "checkout"
+    },
+    "window": {
+      "backfill_hours": 72,
+      "max_records": 100
+    },
+    "results": {
+      "annotated_records": 12,
+      "matched_records": 9,
+      "mismatched_records": 3,
+      "match_rate": 75.0,
+      "learning_jobs_dispatched": 5
+    },
+    "method_accuracy": [
+      {
+        "method": "reverse_dns",
+        "total": 6,
+        "matched": 5,
+        "accuracy_rate": 83.3
+      }
+    ]
+  }
+}</code></pre>
+            </div>
+        </div>
+
         {{-- Error Codes --}}
         <div>
             <h3 class="text-base font-medium text-gray-900 mb-3">Error Codes</h3>
@@ -255,7 +313,7 @@ export default {
             @foreach([
                 ['How accurate is the detection?', 'First-time visitors: 70-85% accuracy at city level. Returning visitors: 85-90%+ as the system learns patterns.'],
                 ['Does it work with VPNs?', 'The system detects VPN usage and flags it. When a VPN is detected, confidence scores are reduced and the response includes VPN indicators.'],
-                ['What about privacy?', 'We do not store personally identifiable information. Fingerprints are hashed and not reversible. Default data retention is 90 days.'],
+                ['What about privacy?', 'We do not store personally identifiable information. Fingerprints are hashed and not reversible. Detection is passive only and does not request browser location permission. Default data retention is 90 days.'],
                 ['What are the rate limits?', 'Free: 100 req/min, Starter: 500 req/min, Growth: 2000 req/min. Contact us for enterprise limits.'],
                 ['Which countries are supported?', 'Currently optimized for India with 50+ city coverage. Support for other countries is on the roadmap.'],
             ] as $i => [$q, $a])

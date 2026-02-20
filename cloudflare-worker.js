@@ -93,7 +93,9 @@ export default {
         // Mark as forwarded to prevent loops
         headers.set(FORWARDED_MARKER_HEADER, "1");
         headers.set("X-Forwarded-Host", requestUrl.hostname);
-        headers.set("X-Real-IP", request.headers.get("CF-Connecting-IP") || "");
+        const cfConnectingIp = request.headers.get("CF-Connecting-IP") || "";
+        headers.set("CF-Connecting-IP", cfConnectingIp);
+        headers.set("X-Real-IP", cfConnectingIp);
 
         // Inject Cloudflare geo data as custom headers
         if (cf.city) headers.set("X-CF-City", cf.city);

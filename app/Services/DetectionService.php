@@ -27,10 +27,12 @@ class DetectionService
     {
         $startTime = microtime(true);
         $requestId = 'req_' . Str::random(12);
+        $defaultCountry = config('detection.default_country', 'India');
 
         // STEP 1: Get IP and basic info
-        $ip = $request->ip();
+        $ip = $this->resolveClientIp($request);
         $signals = $request->input('signals', []);
+        $verification = $this->extractLocationVerification($signals);
         $fingerprintId = $signals['fingerprint'] ?? null;
         $userAgent = $signals['user_agent'] ?? $request->userAgent();
 
@@ -66,33 +68,38 @@ class DetectionService
         }
 
         // STEP 3: Check learned IP ranges
-        $learnedResult = $this->learning->checkIPRangeLearnings($ip);
+        $learnedResult = $this->learning->checkIPRangeLearnings($client->id, $ip);
 
         // STEP 4: SIGNAL FUSION — combine ALL passive signals
         $fusionResult = $this->signalFusion->inferLocation($ip, $signals, $request);
 
         $detectedCity = $fusionResult['city'];
         $detectedState = $fusionResult['state'];
+        $detectedCountry = $fusionResult['country'] ?? $defaultCountry;
         $confidence = $fusionResult['confidence'];
         $method = $fusionResult['method'];
         $ensembleData = $fusionResult['sources_data'] ?? null;
+        $qualityTelemetry = $fusionResult['quality_telemetry'] ?? [];
 
         // Use learned data if fusion didn't produce a city
         if (!$detectedCity && $learnedResult) {
             $detectedCity = $learnedResult['city'];
             $detectedState = $learnedResult['state'];
+            $detectedCountry = $defaultCountry;
             $confidence = $learnedResult['confidence'];
             $method = 'ip_range_learning';
         }
 
         // STEP 5: VPN Detection
         $asn = $fusionResult['asn'] ?? null;
-        $hostname = null;
-        try {
-            $hostname = gethostbyaddr($ip);
-            if ($hostname === $ip)
-                $hostname = null;
-        } catch (\Throwable $e) {
+        $hostname = $fusionResult['reverse_dns_hostname'] ?? null;
+        if (!$hostname) {
+            try {
+                $hostname = gethostbyaddr($ip);
+                if ($hostname === $ip)
+                    $hostname = null;
+            } catch (\Throwable $e) {
+            }
         }
 
         $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname);
@@ -132,6 +139,8 @@ class DetectionService
             }
         }
 
+        $isLocationVerified = $this->isLocationVerificationMatch($verification, $detectedCity, $detectedState);
+
         // Parse browser/device info
         $browserInfo = $this->parseBrowserInfo($userAgent);
 
@@ -152,6 +161,7 @@ class DetectionService
             $client, $fingerprintId, $signals, $detectedCity, $detectedState,
             $confidence, $method, $vpnResult, $ip, $hostname, $fusionResult,
             $asn, $ensembleData, $userAgent, $browserInfo, $processingTime,
+            $detectedCountry, $isLocationVerified, $verification,
             &$detection
         ) {
             $detection = $this->saveDetection($client, [
@@ -159,7 +169,7 @@ class DetectionService
                 'session_id' => $signals['session_id'] ?? null,
                 'detected_city' => $detectedCity,
                 'detected_state' => $detectedState,
-                'detected_country' => 'India',
+                'detected_country' => $detectedCountry,
                 'confidence' => $confidence,
                 'detection_method' => $method,
                 'is_vpn' => $vpnResult['is_vpn'],
@@ -177,6 +187,15 @@ class DetectionService
                 'timezone' => $signals['timezone'] ?? null,
                 'language' => $signals['language'] ?? null,
                 'ip_sources_data' => $ensembleData,
+                'verified_city' => $verification['city'] ?? null,
+                'verified_state' => $verification['state'] ?? null,
+                'verified_country' => $verification['country'] ?? null,
+                'is_location_verified' => $isLocationVerified,
+                'verification_source' => $verification['source'] ?? null,
+                'verification_received_at' => !empty($verification['city']) ? now() : null,
+                'state_disagreement_count' => (int) ($qualityTelemetry['state_disagreement_count'] ?? 0),
+                'city_disagreement_count' => (int) ($qualityTelemetry['city_disagreement_count'] ?? 0),
+                'fallback_reason' => $qualityTelemetry['fallback_reason'] ?? null,
                 'processing_time_ms' => $processingTime,
             ]);
 
@@ -187,7 +206,12 @@ class DetectionService
         });
 
         // Self-learning (async, outside transaction)
-        if ($detection && $confidence >= config('detection.learning.min_confidence_to_learn', 80)) {
+        $learningRequiresVerified = config('detection.learning.require_verified_location', true);
+        if (
+            $detection
+            && $confidence >= config('detection.learning.min_confidence_to_learn', 80)
+            && (!$learningRequiresVerified || $isLocationVerified)
+        ) {
             LearnFromDetection::dispatch($detection);
         }
 
@@ -200,7 +224,7 @@ class DetectionService
             'location' => [
                 'city' => $detectedCity,
                 'state' => $detectedState,
-                'country' => 'India',
+                'country' => $detectedCountry,
                 'confidence' => $confidence,
                 'method' => $method,
                 'latitude' => $fusionResult['latitude'] ?? null,
@@ -336,5 +360,73 @@ class DetectionService
     private function isPrivateIP(string $ip): bool
     {
         return !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+    }
+
+    /**
+     * Resolve end-user IP from trusted edge headers without relying on browser permissions.
+     */
+    private function resolveClientIp(Request $request): string
+    {
+        $fallback = $request->ip();
+
+        $candidates = [];
+        $forwardedByWorker = $request->header('X-Worker-Forwarded') === '1';
+        if ($forwardedByWorker) {
+            $candidates[] = $request->header('CF-Connecting-IP');
+            $candidates[] = $request->header('X-Real-IP');
+        }
+
+        $candidates[] = $fallback;
+
+        foreach ($candidates as $candidate) {
+            if (!$candidate || !filter_var($candidate, FILTER_VALIDATE_IP)) {
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return $fallback;
+    }
+
+    private function extractLocationVerification(array $signals): array
+    {
+        $verification = $signals['location_verification'] ?? null;
+        if (!is_array($verification)) {
+            return ['city' => null, 'state' => null, 'country' => null, 'source' => null];
+        }
+
+        $city = trim((string) ($verification['city'] ?? ''));
+        $state = trim((string) ($verification['state'] ?? ''));
+        $country = trim((string) ($verification['country'] ?? config('detection.default_country', 'India')));
+        $source = trim((string) ($verification['source'] ?? ''));
+
+        if ($city === '' || $source === '') {
+            return ['city' => null, 'state' => null, 'country' => null, 'source' => null];
+        }
+
+        return [
+            'city' => $city,
+            'state' => $state !== '' ? $state : null,
+            'country' => $country !== '' ? $country : null,
+            'source' => $source,
+        ];
+    }
+
+    private function isLocationVerificationMatch(array $verification, ?string $detectedCity, ?string $detectedState): bool
+    {
+        if (!$detectedCity || empty($verification['city'])) {
+            return false;
+        }
+
+        if (strcasecmp($verification['city'], $detectedCity) !== 0) {
+            return false;
+        }
+
+        if (!empty($verification['state']) && !empty($detectedState)) {
+            return strcasecmp($verification['state'], $detectedState) === 0;
+        }
+
+        return true;
     }
 }

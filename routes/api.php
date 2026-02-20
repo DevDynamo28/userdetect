@@ -3,6 +3,7 @@
 use App\Http\Controllers\API\AnalyticsController;
 use App\Http\Controllers\API\ClientController;
 use App\Http\Controllers\API\DetectionController;
+use App\Http\Controllers\API\LocationVerificationController;
 use App\Http\Controllers\API\UserHistoryController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,7 @@ Route::prefix('v1')->middleware(['api.key', 'api.rate'])->group(function () {
 
     // User history
     Route::get('/user/{fingerprintId}/history', [UserHistoryController::class, 'show']);
+    Route::post('/user/{fingerprintId}/verify-location', [LocationVerificationController::class, 'store']);
 
     // Analytics
     Route::get('/analytics/summary', [AnalyticsController::class, 'summary']);

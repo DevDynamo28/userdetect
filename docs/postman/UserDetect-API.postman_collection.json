@@ -1,0 +1,250 @@
+{
+  "info": {
+    "_postman_id": "4ff7084d-d2e6-4f33-9076-b9d99df4c887",
+    "name": "UserDetect API - Passive Location QA",
+    "description": "Single collection for passive (no browser permission) location flow. Run requests in order: 1) Health, 2) Detect, 3) Verify Location, 4) Analytics Summary, 5) User History.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const data = pm.response.json();",
+              "pm.test('Service reports ok', function () {",
+              "  pm.expect(data.status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/health",
+        "description": "Unauthenticated health endpoint."
+      },
+      "response": []
+    },
+    {
+      "name": "Detect (Passive Signals)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const data = pm.response.json();",
+              "pm.test('Detection succeeded', function () {",
+              "  pm.expect(data.success).to.eql(true);",
+              "});",
+              "pm.test('Location object exists', function () {",
+              "  pm.expect(data).to.have.property('location');",
+              "});",
+              "if (data.user_id && data.user_id.startsWith('fp_')) {",
+              "  pm.collectionVariables.set('fingerprintId', data.user_id.substring(3));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Test-IP",
+            "value": "8.8.8.8",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"signals\": {\n    \"fingerprint\": \"{{fingerprintId}}\",\n    \"session_id\": \"sess_postman_demo_001\",\n    \"timezone\": \"America/New_York\",\n    \"timezone_offset\": 300,\n    \"language\": \"en-US\",\n    \"languages\": [\"en-US\", \"es-US\"],\n    \"language_analysis\": {\n      \"regional\": [\n        {\n          \"code\": \"es-US\",\n          \"language\": \"es\",\n          \"position\": 1\n        }\n      ],\n      \"total_languages\": 2\n    },\n    \"regional_fonts\": [\"Noto Sans Bengali\"],\n    \"user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36\",\n    \"screen\": {\n      \"width\": 1920,\n      \"height\": 1080,\n      \"color_depth\": 24,\n      \"pixel_ratio\": 1\n    },\n    \"platform\": \"Win32\"\n  },\n  \"options\": {\n    \"include_debug_info\": true,\n    \"return_alternatives\": true\n  }\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/detect",
+        "description": "Primary passive detection endpoint. No geolocation permission usage."
+      },
+      "response": []
+    },
+    {
+      "name": "Verify Location (Backfill Labels)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const data = pm.response.json();",
+              "pm.test('Verification succeeded', function () {",
+              "  pm.expect(data.success).to.eql(true);",
+              "});",
+              "pm.test('Backfill summary exists', function () {",
+              "  pm.expect(data.data).to.have.property('results');",
+              "  pm.expect(data.data.results).to.have.property('annotated_records');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"city\": \"{{verifiedCity}}\",\n  \"state\": \"{{verifiedState}}\",\n  \"country\": \"{{verifiedCountry}}\",\n  \"source\": \"{{verifySource}}\",\n  \"backfill_hours\": 72,\n  \"max_records\": 100\n}"
+        },
+        "url": "{{baseUrl}}/api/v1/user/{{fingerprintId}}/verify-location",
+        "description": "Annotates recent detections for this fingerprint with verified city/state/country labels."
+      },
+      "response": []
+    },
+    {
+      "name": "Analytics Summary",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const data = pm.response.json();",
+              "pm.test('Analytics succeeded', function () {",
+              "  pm.expect(data.success).to.eql(true);",
+              "});",
+              "pm.test('Quality metrics are present', function () {",
+              "  pm.expect(data).to.have.property('quality_metrics');",
+              "  pm.expect(data.quality_metrics).to.have.property('city_hit_rate');",
+              "  pm.expect(data.quality_metrics).to.have.property('verified_label_accuracy_rate');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/analytics/summary?period={{period}}",
+        "description": "Returns usage + quality metrics (hit rate, disagreement, verified-label accuracy)."
+      },
+      "response": []
+    },
+    {
+      "name": "User History",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 or 404', function () {",
+              "  pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "const data = pm.response.json();",
+              "if (pm.response.code === 200) {",
+              "  pm.test('History payload returned', function () {",
+              "    pm.expect(data.success).to.eql(true);",
+              "    pm.expect(data).to.have.property('user');",
+              "  });",
+              "} else {",
+              "  pm.test('Consistent not-found format', function () {",
+              "    pm.expect(data.success).to.eql(false);",
+              "    pm.expect(data.error.code).to.eql('USER_NOT_FOUND');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/user/{{fingerprintId}}/history",
+        "description": "Returns fingerprint-level visit and city distribution history."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "apiKey",
+      "value": "sk_test_replace_me"
+    },
+    {
+      "key": "fingerprintId",
+      "value": "replace_with_sha256_fingerprint"
+    },
+    {
+      "key": "verifiedCity",
+      "value": "Boston"
+    },
+    {
+      "key": "verifiedState",
+      "value": "MA"
+    },
+    {
+      "key": "verifiedCountry",
+      "value": "United States"
+    },
+    {
+      "key": "verifySource",
+      "value": "checkout"
+    },
+    {
+      "key": "period",
+      "value": "last_7_days"
+    }
+  ]
+}

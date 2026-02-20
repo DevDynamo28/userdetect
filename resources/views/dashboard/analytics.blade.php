@@ -38,6 +38,15 @@
     <x-stat-card title="Avg Confidence" :value="$avgConfidence" suffix="%" />
 </div>
 
+{{-- Quality Metrics --}}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+    <x-stat-card title="City Hit Rate" :value="$qualityMetrics['city_hit_rate']" suffix="%" />
+    <x-stat-card title="Low Confidence Rate" :value="$qualityMetrics['low_confidence_rate']" suffix="%" />
+    <x-stat-card title="Disagreement Rate" :value="$qualityMetrics['disagreement_rate']" suffix="%" />
+    <x-stat-card title="Verified Coverage" :value="$qualityMetrics['verified_label_coverage_rate']" suffix="%" />
+    <x-stat-card title="Verified Accuracy" :value="$qualityMetrics['verified_label_accuracy_rate']" suffix="%" />
+</div>
+
 {{-- Charts --}}
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
     {{-- Requests Over Time --}}
@@ -62,6 +71,100 @@
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 class="text-sm font-medium text-gray-700 mb-4">Confidence Score Trend</h3>
         <canvas id="confChart" height="200"></canvas>
+    </div>
+</div>
+
+{{-- Method Quality Breakdown --}}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-4">City Hit Rate by Method</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">City Hits</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    @forelse($cityHitByMethod as $row)
+                        <tr>
+                            <td class="px-4 py-3 text-gray-900">{{ $row['method'] }}</td>
+                            <td class="px-4 py-3 text-gray-900">{{ number_format($row['city_hits']) }}</td>
+                            <td class="px-4 py-3 text-gray-600">{{ number_format($row['total']) }}</td>
+                            <td class="px-4 py-3 text-gray-600">{{ $row['city_hit_rate'] }}%</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="px-4 py-3 text-gray-500">No data available</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-4">Disagreement Rate by Method</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Disagreements</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    @forelse($disagreementByMethod as $row)
+                        <tr>
+                            <td class="px-4 py-3 text-gray-900">{{ $row['method'] }}</td>
+                            <td class="px-4 py-3 text-gray-900">{{ number_format($row['disagreements']) }}</td>
+                            <td class="px-4 py-3 text-gray-600">{{ number_format($row['total']) }}</td>
+                            <td class="px-4 py-3 text-gray-600">{{ $row['disagreement_rate'] }}%</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="px-4 py-3 text-gray-500">No data available</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{{-- Verified Label Accuracy by Method --}}
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+    <h3 class="text-sm font-medium text-gray-700 mb-4">Verified Label Accuracy by Method</h3>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified Matches</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified Total</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accuracy</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                @forelse($verifiedAccuracyByMethod as $row)
+                    <tr>
+                        <td class="px-4 py-3 text-gray-900">{{ $row['method'] }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ number_format($row['verified_matches']) }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ number_format($row['verified_total']) }}</td>
+                        <td class="px-4 py-3 text-gray-600">{{ $row['accuracy_rate'] }}%</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="4" class="px-4 py-3 text-gray-500">No verified labels captured for this period</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 </div>
 

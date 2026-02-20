@@ -31,6 +31,13 @@ return [
             'min_sources_required' => (int) env('ENSEMBLE_MIN_SOURCES_REQUIRED', 2), // below this, confidence is capped
             'failure_circuit_threshold' => (int) env('ENSEMBLE_FAILURE_CIRCUIT_THRESHOLD', 4), // consecutive failures to open circuit
             'failure_circuit_ttl_seconds' => (int) env('ENSEMBLE_FAILURE_CIRCUIT_TTL_SECONDS', 120), // skip external calls while circuit open
+            // Keep false in production to avoid plaintext API calls.
+            'allow_insecure_sources' => (bool) env('ENSEMBLE_ALLOW_INSECURE_SOURCES', false),
+            // Restrict to compliant/reliable defaults. Additional sources can be enabled per environment.
+            'enabled_sources' => array_values(array_filter(array_map('trim', explode(',', env(
+                'ENSEMBLE_ENABLED_SOURCES',
+                'ipapi,ipwhois,ipwho,freeipapi'
+            ))))),
             'sources' => [
                 'ipapi' => 'https://ipapi.co/{ip}/json/',
                 'ip-api' => 'http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as',
@@ -96,6 +103,8 @@ return [
     'learning' => [
         'enabled' => true,
         'min_confidence_to_learn' => 80,
+        // Prevent model feedback loops. Learn only from verified labels by default.
+        'require_verified_location' => (bool) env('LEARNING_REQUIRE_VERIFIED_LOCATION', true),
         'ip_range_cidr_mask' => 24,
         'min_samples_for_active' => 10,
         'min_success_rate' => 70,
@@ -127,6 +136,7 @@ return [
     */
     // Test IP override (for local/testing environments)
     'test_ip' => env('TEST_IP'),
+    'default_country' => env('DETECTION_DEFAULT_COUNTRY', 'India'),
 
     'rate_limits' => [
         'free' => (int) env('API_RATE_LIMIT_PER_MINUTE', 100),
