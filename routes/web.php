@@ -4,6 +4,7 @@ use App\Http\Controllers\Dashboard\AnalyticsDashboardController;
 use App\Http\Controllers\Dashboard\ApiKeyController;
 use App\Http\Controllers\Dashboard\AuthController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\ApiTesterController;
 use App\Http\Controllers\Dashboard\SettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +35,10 @@ Route::middleware('auth')->prefix('dashboard')->name('dashboard.')->group(functi
     Route::get('/api-keys', [ApiKeyController::class, 'index'])->name('api-keys');
     Route::post('/api-keys/regenerate', [ApiKeyController::class, 'regenerate'])->name('api-keys.regenerate');
     Route::post('/api-keys/revoke', [ApiKeyController::class, 'revoke'])->name('api-keys.revoke');
+
+    // API Tester
+    Route::get('/api-tester', [ApiTesterController::class, 'index'])->name('api-tester');
+    Route::post('/api-tester/test', [ApiTesterController::class, 'test'])->name('api-tester.test');
 
     // Settings
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
