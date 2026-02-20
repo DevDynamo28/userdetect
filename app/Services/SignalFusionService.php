@@ -93,22 +93,35 @@ class SignalFusionService
         $cfLng = $request->header('X-CF-Longitude');
         $cfTimezone = $request->header('X-CF-Timezone');
 
+        // ASN and AS Organization forwarded by the CF Worker (cf.asn / cf.asOrganization)
+        $cfAsnRaw = $request->header('X-CF-ASN');
+        $cfAsOrg = $request->header('X-CF-ASOrg');
+        $cfAsn = $cfAsnRaw ? 'AS' . ltrim((string) $cfAsnRaw, 'ASas') : null;
+
         if (!$cfCity && !$cfRegion) {
             return null;
         }
+
+        // Mobile carrier IPs are assigned to regional pools, not to individual cities.
+        // For these ASNs, city-level data from any GeoIP source (including Cloudflare) is
+        // unreliable — the IP may be registered to a state capital while the device is elsewhere.
+        // Dropping confidence to 65 also causes determineEnsembleFallbackReason() to trigger
+        // ensemble corroboration, which helps catch disagreements across sources.
+        $mobileAsns = config('detection.mobile_asns', []);
+        $isMobileAsn = $cfAsn && in_array($cfAsn, $mobileAsns);
 
         $confidence = 0;
         $weight = 0;
 
         if ($cfCity) {
-            $confidence = 88;
+            $confidence = $isMobileAsn ? 65 : 88;
             $weight = 50;
         } elseif ($cfRegion) {
             $confidence = 70;
             $weight = 35;
         }
 
-        Log::channel('detection')->info("Cloudflare geo: city={$cfCity}, region={$cfRegion}, country={$cfCountry}");
+        Log::channel('detection')->info("Cloudflare geo: city={$cfCity}, region={$cfRegion}, country={$cfCountry}, asn={$cfAsn}, org={$cfAsOrg}, mobile_asn=" . ($isMobileAsn ? 'yes' : 'no'));
 
         return [
             'source' => 'cloudflare',
@@ -119,6 +132,11 @@ class SignalFusionService
             'longitude' => $cfLng ? (float) $cfLng : null,
             'confidence' => $confidence,
             'weight' => $weight,
+            'meta' => [
+                'asn' => $cfAsn,
+                'isp' => $cfAsOrg ?: null,
+                'mobile_asn' => $isMobileAsn,
+            ],
         ];
     }
 
@@ -482,16 +500,23 @@ class SignalFusionService
             $baseConfidence += 8; // Language + Cloudflare + IP all agree = very strong
         }
 
-        // Cloudflare provides a significant confidence boost
+        // Cloudflare provides a confidence boost, but not a hard 85 floor.
+        // The old floor of 85 caused mobile-ISP IPs (e.g. Airtel) to report
+        // high confidence even when the city was wrong (ISP-registered region ≠ device city).
+        // 78 is a softer floor that still rewards CF city data while leaving room for
+        // other signals (and VPN penalty) to pull it down when appropriate.
         $hasCF = false;
+        $cfHasMobileAsn = false;
         foreach ($evidence as $e) {
             if ($e['source'] === 'cloudflare' && !empty($e['city'])) {
                 $hasCF = true;
+                $cfHasMobileAsn = (bool) ($e['meta']['mobile_asn'] ?? false);
                 break;
             }
         }
         if ($hasCF) {
-            $baseConfidence = max($baseConfidence, 85);
+            $floor = $cfHasMobileAsn ? 70 : 78;
+            $baseConfidence = max($baseConfidence, $floor);
         }
 
         // Penalize when state signals are highly split between top contenders.

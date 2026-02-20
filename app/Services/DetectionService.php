@@ -92,6 +92,18 @@ class DetectionService
 
         // STEP 5: VPN Detection
         $asn = $fusionResult['asn'] ?? null;
+        // Fall back to CF-provided ASN when ensemble was skipped (most common path)
+        if (!$asn) {
+            $cfAsnRaw = $request->header('X-CF-ASN');
+            if ($cfAsnRaw) {
+                $asn = 'AS' . ltrim((string) $cfAsnRaw, 'ASas');
+            }
+        }
+
+        // X-CF-ASOrg carries Cloudflare's AS Organization string (e.g. "VPN-Consumer-IN").
+        // Cloudflare labels VPN providers here, making it the most reliable passive VPN signal.
+        $cfAsOrg = $request->header('X-CF-ASOrg');
+
         $hostname = $fusionResult['reverse_dns_hostname'] ?? null;
         if (!$hostname) {
             try {
@@ -102,7 +114,7 @@ class DetectionService
             }
         }
 
-        $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname);
+        $vpnResult = $this->vpnDetection->detect($ip, $asn, $hostname, $cfAsOrg);
 
         if ($vpnResult['is_vpn']) {
             $penalty = config('detection.vpn_detection.confidence_penalty', 20);

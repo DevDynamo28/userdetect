@@ -26,8 +26,11 @@ class VPNDetectionService
 
     /**
      * Detect if the IP is likely a VPN/proxy.
+     *
+     * @param  string|null  $cfAsOrg  Cloudflare-reported AS Organization (X-CF-ASOrg header).
+     *                                Cloudflare explicitly labels VPN providers here, e.g. "VPN-Consumer-IN".
      */
-    public function detect(string $ip, ?string $asn, ?string $reverseDNS): array
+    public function detect(string $ip, ?string $asn, ?string $reverseDNS, ?string $cfAsOrg = null): array
     {
         $vpnScore = 0;
         $indicators = [];
@@ -55,6 +58,21 @@ class VPNDetectionService
         if ($this->isPrivateOrReserved($ip) && !app()->environment('local', 'testing')) {
             $vpnScore += 20;
             $indicators[] = 'suspicious_ip_range';
+        }
+
+        // Check 5: CF AS Organization contains VPN/proxy keywords (+60, very strong signal).
+        // Cloudflare labels known VPN providers directly in asOrganization, e.g. "VPN-Consumer-IN".
+        // This is the most reliable indicator available without a paid IP intelligence API.
+        if ($cfAsOrg && $this->hasVpnKeywords($cfAsOrg)) {
+            $vpnScore += 60;
+            $indicators[] = 'vpn_organization';
+        }
+
+        // Check 6: CF AS Organization is a known hosting/datacenter provider (+25).
+        // Only add if hosting_provider was not already flagged via hostname/asn.
+        if ($cfAsOrg && !in_array('hosting_provider', $indicators, true) && $this->isHostingProvider($cfAsOrg, null)) {
+            $vpnScore += 25;
+            $indicators[] = 'hosting_provider';
         }
 
         // Calculate result
