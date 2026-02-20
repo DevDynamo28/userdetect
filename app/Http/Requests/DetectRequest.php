@@ -44,6 +44,11 @@ class DetectRequest extends FormRequest
             'signals.network_probes.connection.effective_type' => 'nullable|string|max:10',
             'signals.network_probes.connection.rtt' => 'nullable|integer|min:0|max:30000',
             'signals.network_probes.connection.downlink' => 'nullable|numeric|min:0',
+            // WebRTC ICE host candidate local IPs (CGN subnet → ISP gateway city)
+            'signals.network_probes.webrtc' => 'nullable|array',
+            'signals.network_probes.webrtc.local_ips' => 'nullable|array|max:8',
+            'signals.network_probes.webrtc.local_ips.*' => 'nullable|ip',
+            'signals.network_probes.webrtc.connection_type' => 'nullable|string|in:cgn_cellular,private_wifi,link_local,unknown',
             'options' => 'nullable|array',
             'options.return_alternatives' => 'nullable|boolean',
             'options.include_debug_info' => 'nullable|boolean',

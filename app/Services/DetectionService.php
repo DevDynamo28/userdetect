@@ -142,13 +142,39 @@ class DetectionService
         // Cap confidence
         $confidence = min(100, max(0, $confidence));
 
-        // STEP 8: Determine final result
+        // STEP 8: Determine final result + build location alternatives
         $alternatives = [];
         $recommendation = null;
 
+        // Build alternatives from probe candidates (CF PoP coverage cities).
+        // These are the most likely cities for the user's detected state/colo,
+        // ranked by likelihood. Include them when confidence is uncertain or
+        // when the client explicitly requests them (return_alternatives=true).
+        $probeCandidates = $fusionResult['probe_candidates'] ?? [];
+        $returnAlternatives = (bool) data_get($request->input('options', []), 'return_alternatives', false);
+
+        if (!empty($probeCandidates)) {
+            $detectedStateLower = strtolower($detectedState ?? '');
+            foreach ($probeCandidates as $candidateCity) {
+                if ($detectedCity && strtolower($candidateCity) === strtolower($detectedCity)) {
+                    continue; // Skip the city we're already returning as primary
+                }
+                $alternatives[] = [
+                    'city'    => $candidateCity,
+                    'state'   => $detectedState,
+                    'country' => $detectedCountry,
+                    'source'  => 'network_probe_candidate',
+                ];
+            }
+        }
+
         if ($confidence < 55 || !$detectedCity) {
             $recommendation = 'soft_prompt';
-            $alternatives = $fusionResult['alternatives'] ?? [];
+            // Merge any fusion-level alternatives (from older code paths)
+            $fusionAlternatives = $fusionResult['alternatives'] ?? [];
+            if (!empty($fusionAlternatives) && empty($alternatives)) {
+                $alternatives = $fusionAlternatives;
+            }
             if ($confidence < 55) {
                 $detectedCity = null; // Only return state-level for low confidence
             }
@@ -246,7 +272,7 @@ class DetectionService
                 'longitude' => $fusionResult['longitude'] ?? null,
                 'note' => $confidence < 55 ? 'Low confidence - state-level only' : null,
             ],
-            'alternatives' => $recommendation ? $alternatives : [],
+            'alternatives' => ($recommendation || $returnAlternatives) ? $alternatives : [],
             'recommendation' => $recommendation,
             'vpn_detection' => [
                 'is_vpn' => $vpnResult['is_vpn'],

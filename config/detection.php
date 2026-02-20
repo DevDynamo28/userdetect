@@ -128,8 +128,17 @@ return [
         // Weighted higher than ensemble because it measures actual network topology,
         // not a database lookup. Provides city-level when RTT ≤ 10ms, state-level otherwise.
         'network_probe' => 35,
+        // webrtc_cgn: browser WebRTC local IP → ISP Packet Gateway subnet → city.
+        // The /24 prefix of a 4G CGN address (100.64.0.0/10) identifies the ISP's
+        // PGW serving that geographic area. This is the ONLY passive signal that
+        // can distinguish sub-circle cities (e.g. Surat vs Vadodara on Airtel Gujarat).
+        'webrtc_cgn' => 28,
         'language_inference' => 25,
         'ip_ensemble' => 20,
+        // RDAP: IP allocation data from APNIC/ARIN — authoritative ISP circle codes.
+        // Weighted higher than ensemble and local_geoip because it comes directly from
+        // the IP registry. Circle codes (AIRTEL-GJ) are state-accurate for Indian mobile ISPs.
+        'rdap' => 22,
         'local_geoip' => 18,
         'reverse_dns' => 15,
         'network_signals' => 10,
@@ -171,6 +180,40 @@ return [
     'slo' => [
         'detect_p95_ms' => (int) env('DETECT_SLO_P95_MS', 700),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | City Probe Endpoints (optional, SDK RTT triangulation)
+    |--------------------------------------------------------------------------
+    | If populated, the JS SDK will measure RTT to each probe URL and submit
+    | the results as signals.network_probes.city_probes. The server with the
+    | lowest RTT is the city nearest to the user — more accurate than the
+    | single CF PoP colo approach, especially for sub-100km disambiguation
+    | (e.g., Surat vs Vadodara within Gujarat).
+    |
+    | Each entry: 'city_name' => 'probe_url'
+    | Probe URL must respond to GET requests with a 200 OK (any body).
+    | Recommend deploying a minimal HTTP endpoint (nginx, Cloudflare Worker)
+    | in each target city. Leave empty to disable (no extra SDK requests).
+    |
+    | Example deployment:
+    |   surat     → Cloudflare Worker route bound to Surat origin IP
+    |   vadodara  → Cloudflare Worker route bound to Vadodara origin IP
+    |--------------------------------------------------------------------------
+    */
+    'city_probes' => array_filter(array_map('trim', [
+        'Surat'     => env('CITY_PROBE_SURAT',     ''),
+        'Vadodara'  => env('CITY_PROBE_VADODARA',  ''),
+        'Ahmedabad' => env('CITY_PROBE_AHMEDABAD', ''),
+        'Rajkot'    => env('CITY_PROBE_RAJKOT',    ''),
+        'Mumbai'    => env('CITY_PROBE_MUMBAI',    ''),
+        'Pune'      => env('CITY_PROBE_PUNE',      ''),
+        'Delhi'     => env('CITY_PROBE_DELHI',     ''),
+        'Bangalore' => env('CITY_PROBE_BANGALORE', ''),
+        'Chennai'   => env('CITY_PROBE_CHENNAI',   ''),
+        'Hyderabad' => env('CITY_PROBE_HYDERABAD', ''),
+        'Kolkata'   => env('CITY_PROBE_KOLKATA',   ''),
+    ])),
 
     /*
     |--------------------------------------------------------------------------

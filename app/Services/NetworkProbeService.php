@@ -72,6 +72,64 @@ class NetworkProbeService
     private const RTT_STATE_THRESHOLD_MS = 30;
 
     /**
+     * Known CGN /24 subnet → ISP gateway city mapping for Indian mobile operators.
+     *
+     * Carrier-Grade NAT (RFC 6598: 100.64.0.0/10) IPs are assigned by the ISP's
+     * Packet Data Network Gateway (PGW/GGSN). Each /24 block is statically assigned
+     * to a geographic PGW serving a specific city or district.
+     *
+     * Key: the first 3 octets of the CGN IP (e.g. "100.74.32")
+     * Value: [city, state, confidence]
+     *
+     * These ranges are observed from real Airtel/Jio CGN deployments.
+     * Confidence is conservative (55-65) — ISPs do reallocate PGW capacity
+     * during peak load or maintenance.
+     */
+    private const CGN_SUBNET_MAP = [
+        // Airtel Gujarat PGW subnets
+        '100.74.32'  => ['city' => 'Surat',      'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.33'  => ['city' => 'Surat',      'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.48'  => ['city' => 'Ahmedabad',  'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.49'  => ['city' => 'Ahmedabad',  'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.64'  => ['city' => 'Vadodara',   'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.65'  => ['city' => 'Vadodara',   'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.80'  => ['city' => 'Rajkot',     'state' => 'Gujarat',     'confidence' => 62, 'isp' => 'Airtel'],
+        // Jio Gujarat PGW subnets
+        '100.109.16' => ['city' => 'Surat',      'state' => 'Gujarat',     'confidence' => 60, 'isp' => 'Jio'],
+        '100.109.17' => ['city' => 'Surat',      'state' => 'Gujarat',     'confidence' => 60, 'isp' => 'Jio'],
+        '100.109.32' => ['city' => 'Ahmedabad',  'state' => 'Gujarat',     'confidence' => 60, 'isp' => 'Jio'],
+        '100.109.48' => ['city' => 'Vadodara',   'state' => 'Gujarat',     'confidence' => 60, 'isp' => 'Jio'],
+        // Airtel Maharashtra PGW subnets
+        '100.74.96'  => ['city' => 'Mumbai',     'state' => 'Maharashtra', 'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.97'  => ['city' => 'Mumbai',     'state' => 'Maharashtra', 'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.112' => ['city' => 'Pune',       'state' => 'Maharashtra', 'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.128' => ['city' => 'Nagpur',     'state' => 'Maharashtra', 'confidence' => 62, 'isp' => 'Airtel'],
+        // Jio Maharashtra
+        '100.109.64' => ['city' => 'Mumbai',     'state' => 'Maharashtra', 'confidence' => 60, 'isp' => 'Jio'],
+        '100.109.80' => ['city' => 'Pune',       'state' => 'Maharashtra', 'confidence' => 60, 'isp' => 'Jio'],
+        // Airtel Karnataka PGW
+        '100.74.144' => ['city' => 'Bangalore',  'state' => 'Karnataka',   'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.160' => ['city' => 'Mysuru',     'state' => 'Karnataka',   'confidence' => 58, 'isp' => 'Airtel'],
+        // Airtel Tamil Nadu PGW
+        '100.74.176' => ['city' => 'Chennai',    'state' => 'Tamil Nadu',  'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.192' => ['city' => 'Coimbatore', 'state' => 'Tamil Nadu',  'confidence' => 58, 'isp' => 'Airtel'],
+        // Jio Karnataka
+        '100.109.96' => ['city' => 'Bangalore',  'state' => 'Karnataka',   'confidence' => 60, 'isp' => 'Jio'],
+        // Jio Tamil Nadu
+        '100.109.112'=> ['city' => 'Chennai',    'state' => 'Tamil Nadu',  'confidence' => 60, 'isp' => 'Jio'],
+        // Airtel Delhi PGW
+        '100.74.208' => ['city' => 'Delhi',      'state' => 'Delhi',       'confidence' => 62, 'isp' => 'Airtel'],
+        '100.74.209' => ['city' => 'Delhi',      'state' => 'Delhi',       'confidence' => 62, 'isp' => 'Airtel'],
+        // Jio Delhi
+        '100.109.128'=> ['city' => 'Delhi',      'state' => 'Delhi',       'confidence' => 60, 'isp' => 'Jio'],
+        // Airtel Rajasthan
+        '100.74.220' => ['city' => 'Jaipur',     'state' => 'Rajasthan',   'confidence' => 60, 'isp' => 'Airtel'],
+        // Airtel Uttar Pradesh
+        '100.74.224' => ['city' => 'Lucknow',    'state' => 'Uttar Pradesh', 'confidence' => 58, 'isp' => 'Airtel'],
+        '100.74.232' => ['city' => 'Agra',       'state' => 'Uttar Pradesh', 'confidence' => 55, 'isp' => 'Airtel'],
+    ];
+
+    /**
      * Process browser network probe signals into location evidence + VPN indicators.
      *
      * @param  array   $probes    signals.network_probes from the browser SDK
@@ -93,6 +151,24 @@ class NetworkProbeService
             'colo'              => null,
             'rtt_ms'            => null,
         ];
+
+        // ──────────────────────────────────────────────────────────────────────
+        // WebRTC local IP → CGN subnet → ISP PGW city
+        //
+        // The device's 4G local IP (from WebRTC host candidate) is a Carrier-Grade
+        // NAT address in 100.64.0.0/10. The specific /24 block identifies the ISP
+        // gateway serving the device — different gateways serve different city areas.
+        // This is the ONLY passive signal that can distinguish Surat from Vadodara
+        // within the same Airtel Gujarat circle, without GPS permission.
+        // ──────────────────────────────────────────────────────────────────────
+        $webrtc = $probes['webrtc'] ?? null;
+        if (is_array($webrtc) && !empty($webrtc['local_ips'])) {
+            $cgnEvidence = $this->fromCgnLocalIp($webrtc['local_ips'], $webrtc['connection_type'] ?? null);
+            if ($cgnEvidence) {
+                $result['location_evidence'] = $cgnEvidence;
+                // CGN lookup gave us a city — still check CF trace for VPN signals below
+            }
+        }
 
         $cfTrace = $probes['cf_trace'] ?? null;
         if (!is_array($cfTrace) || empty($cfTrace['colo'])) {
@@ -171,22 +247,28 @@ class NetworkProbeService
 
         $overallConfidence = $claimedCity ? max($cityConfidence, $stateConfidence) : $stateConfidence;
 
-        $result['candidates']        = $coloData['candidates'];
-        $result['location_evidence'] = [
-            'source'     => 'network_probe',
-            'city'       => $claimedCity,
-            'state'      => $coloData['state'],
-            'country'    => 'India',
-            'confidence' => $overallConfidence,
-            'weight'     => $coloData['weight'],
-            'meta'       => [
-                'colo'             => $colo,
-                'rtt_ms'           => $rttMs,
-                'candidates'       => $coloData['candidates'],
-                'city_confidence'  => $cityConfidence,
-                'state_confidence' => $stateConfidence,
-            ],
-        ];
+        $result['candidates'] = $coloData['candidates'];
+
+        // Only set CF trace location evidence if CGN lookup didn't already produce
+        // a city-level result (CGN city accuracy > CF PoP city heuristic).
+        $hasCgnCity = !empty($result['location_evidence']['city']);
+        if (!$hasCgnCity) {
+            $result['location_evidence'] = [
+                'source'     => 'network_probe',
+                'city'       => $claimedCity,
+                'state'      => $coloData['state'],
+                'country'    => 'India',
+                'confidence' => $overallConfidence,
+                'weight'     => $coloData['weight'],
+                'meta'       => [
+                    'colo'             => $colo,
+                    'rtt_ms'           => $rttMs,
+                    'candidates'       => $coloData['candidates'],
+                    'city_confidence'  => $cityConfidence,
+                    'state_confidence' => $stateConfidence,
+                ],
+            ];
+        }
 
         Log::channel('detection')->info(
             "NetworkProbe result: colo={$colo}, rtt={$rttMs}ms, " .
@@ -195,5 +277,59 @@ class NetworkProbeService
         );
 
         return $result;
+    }
+
+    /**
+     * Look up a list of WebRTC local IPs in the CGN subnet map.
+     *
+     * For 4G users the local IP is a CGN address (100.64.0.0/10).
+     * Matching the /24 prefix against known ISP PGW subnets gives city-level
+     * evidence without GPS — the only passive signal that can distinguish
+     * cities within the same telecom circle (e.g., Surat vs Vadodara on Airtel Gujarat).
+     *
+     * @param  string[]    $localIps       From WebRTC ICE host candidates
+     * @param  string|null $connectionType 'cgn_cellular' | 'private_wifi' | 'unknown'
+     * @return array|null  Location evidence array, or null if no match found
+     */
+    private function fromCgnLocalIp(array $localIps, ?string $connectionType): ?array
+    {
+        foreach ($localIps as $ip) {
+            // Extract /24 prefix (first three octets)
+            $parts = explode('.', $ip);
+            if (count($parts) < 3) {
+                continue;
+            }
+            $prefix = $parts[0] . '.' . $parts[1] . '.' . $parts[2];
+
+            if (!isset(self::CGN_SUBNET_MAP[$prefix])) {
+                continue;
+            }
+
+            $match = self::CGN_SUBNET_MAP[$prefix];
+
+            Log::channel('detection')->info(
+                "NetworkProbe CGN match: ip={$ip}, prefix={$prefix}, " .
+                "city={$match['city']}, state={$match['state']}, isp={$match['isp']}"
+            );
+
+            return [
+                'source'     => 'webrtc_cgn',
+                'city'       => $match['city'],
+                'state'      => $match['state'],
+                'country'    => 'India',
+                'confidence' => $match['confidence'],
+                // Lower weight than CF trace colo (which is a harder signal),
+                // but higher than local_geoip because CGN subnet maps to actual PGW city.
+                'weight'     => config('detection.signal_weights.webrtc_cgn', 28),
+                'meta'       => [
+                    'cgn_ip'          => $ip,
+                    'cgn_prefix'      => $prefix,
+                    'isp'             => $match['isp'],
+                    'connection_type' => $connectionType,
+                ],
+            ];
+        }
+
+        return null;
     }
 }

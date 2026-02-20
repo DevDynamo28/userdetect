@@ -139,10 +139,14 @@ function buildLanguageAnalysis(languages) {
 export async function probeNetwork() {
     const result = {};
 
-    const cfTrace = await probeCfTrace();
-    if (cfTrace) {
-        result.cf_trace = cfTrace;
-    }
+    // Run CF trace (3 samples for min-RTT accuracy) and WebRTC probe in parallel.
+    const [cfTrace, webrtc] = await Promise.all([
+        probeCfTraceMultiSample(),
+        probeWebRtcLocalIp(),
+    ]);
+
+    if (cfTrace)  result.cf_trace = cfTrace;
+    if (webrtc)   result.webrtc   = webrtc;
 
     // navigator.connection — passive signal, no permission required
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -156,6 +160,32 @@ export async function probeNetwork() {
     }
 
     return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Probe CF trace 3 times in parallel and return the MINIMUM RTT sample.
+ *
+ * Why minimum, not average?
+ *   Network jitter, OS scheduling, and browser overhead add noise. The minimum
+ *   RTT across 3 probes is the closest estimate of pure propagation delay
+ *   (device → nearest CF PoP), which is what we need for distance estimation.
+ *
+ * @returns {Promise<{colo: string, ip: string, rtt_ms: number, samples: number}|null>}
+ */
+async function probeCfTraceMultiSample() {
+    const SAMPLES = 3;
+    const results = await Promise.all(
+        Array.from({ length: SAMPLES }, () => probeCfTrace())
+    );
+
+    // Filter out failed probes
+    const valid = results.filter(Boolean);
+    if (valid.length === 0) return null;
+
+    // All valid probes should return the same colo (same anycast routing).
+    // Take the one with minimum RTT as the most accurate propagation estimate.
+    const best = valid.reduce((a, b) => (a.rtt_ms <= b.rtt_ms ? a : b));
+    return { ...best, samples: valid.length };
 }
 
 /**
@@ -199,6 +229,95 @@ async function probeCfTrace() {
         clearTimeout(timer);
         return null;
     }
+}
+
+/**
+ * Collect local IP address(es) via WebRTC ICE candidate gathering.
+ *
+ * For 4G/5G mobile users, the OS-assigned local IP is a Carrier-Grade NAT (CGN)
+ * address in the 100.64.0.0/10 or 10.0.0.0/8 range. The specific /24 subnet
+ * identifies which ISP gateway (PGW/GGSN) is serving the device — different
+ * gateways serve different geographic areas within the same telecom circle.
+ *
+ * This is the ONLY passive signal that can distinguish sub-circle city level
+ * (e.g., Surat vs Vadodara within Airtel Gujarat) without GPS permission.
+ *
+ * Privacy notes:
+ *  - No STUN server is used, so the public IP is NOT leaked.
+ *  - Only "host" candidates (device's own interface IPs) are collected.
+ *  - Browsers that replace local IPs with mDNS names will return null.
+ *  - This is consistent with RFC 8828 (local IP exposure restrictions).
+ *
+ * @returns {Promise<{local_ips: string[], connection_type: string}|null>}
+ */
+async function probeWebRtcLocalIp() {
+    if (typeof RTCPeerConnection === 'undefined') return null;
+
+    return new Promise((resolve) => {
+        const localIps = new Set();
+        let settled   = false;
+
+        const settle = () => {
+            if (settled) return;
+            settled = true;
+            try { pc.close(); } catch (_) {}
+            if (localIps.size === 0) {
+                resolve(null);
+                return;
+            }
+            // Determine connection type from local IP range
+            const ips = Array.from(localIps);
+            resolve({
+                local_ips:       ips,
+                connection_type: classifyLocalIp(ips[0]),
+            });
+        };
+
+        // No STUN servers — only collects host (local interface) candidates
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel('__probe__');
+
+        pc.onicecandidate = (e) => {
+            if (!e.candidate) {
+                // Null candidate = ICE gathering complete
+                settle();
+                return;
+            }
+            // Parse candidate SDP: "candidate:... IP port ..."
+            const parts = e.candidate.candidate.split(' ');
+            const type  = parts[7];   // host | srflx | relay
+            const ip    = parts[4];   // IP address or mDNS name
+
+            if (type === 'host' && ip && !ip.endsWith('.local')) {
+                localIps.add(ip);
+            }
+        };
+
+        pc.createOffer()
+            .then(offer => pc.setLocalDescription(offer))
+            .catch(() => settle());
+
+        // Hard timeout — ICE gathering can stall on locked-down networks
+        setTimeout(settle, 2000);
+    });
+}
+
+/**
+ * Classify a local IP address into its network type.
+ * Used to flag cellular CGN addresses which carry ISP gateway info.
+ *
+ * @param {string} ip
+ * @returns {'cgn_cellular'|'private_wifi'|'link_local'|'unknown'}
+ */
+function classifyLocalIp(ip) {
+    if (!ip) return 'unknown';
+    // RFC 6598 — Carrier-Grade NAT (CGNAT), assigned to ISP gateways
+    if (/^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(ip)) return 'cgn_cellular';
+    // RFC 1918 private ranges — usually Wi-Fi router NAT
+    if (/^10\./.test(ip) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip) || /^192\.168\./.test(ip)) return 'private_wifi';
+    // RFC 3927 link-local
+    if (/^169\.254\./.test(ip)) return 'link_local';
+    return 'unknown';
 }
 
 function detectRegionalFonts() {

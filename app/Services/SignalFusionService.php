@@ -17,6 +17,7 @@ class SignalFusionService
         private ReverseDNSService $reverseDNS,
         private EnsembleIPService $ensembleIP,
         private NetworkProbeService $networkProbe,
+        private RdapService $rdap,
     ) {
     }
 
@@ -61,7 +62,16 @@ class SignalFusionService
         if ($dnsEvidence)
             $evidence[] = $dnsEvidence;
 
-        // 7. Ensemble IP APIs (last resort, only if we have weak evidence)
+        // 7. RDAP — IP allocation authority data (APNIC).
+        //    Extracts ISP circle codes (AIRTEL-GJ, RJIO-IN-GJ) that pinpoint the
+        //    telecom circle even when city-level GeoIP data is wrong. Much more
+        //    reliable than ensemble for Indian mobile ISPs because it comes directly
+        //    from the IP registry, not a third-party estimate.
+        $rdapEvidence = $this->fromRdap($ip);
+        if ($rdapEvidence)
+            $evidence[] = $rdapEvidence;
+
+        // 9. Ensemble IP APIs (last resort, only if we have weak evidence)
         $fallbackReason = $this->determineEnsembleFallbackReason($evidence);
         if ($fallbackReason !== null) {
             $apiEvidence = $this->fromEnsembleAPIs($ip);
@@ -269,6 +279,35 @@ class SignalFusionService
             'weight' => config('detection.signal_weights.reverse_dns', 15),
             'meta' => [
                 'hostname' => $hostname,
+            ],
+        ];
+    }
+
+    /**
+     * RDAP lookup — IP registration data from APNIC/ARIN.
+     *
+     * Gives us ISP telecom circle codes (AIRTEL-GJ, RJIO-IN-GJ) that are often
+     * accurate at state level even when city-level GeoIP data is wrong.
+     * City evidence is only returned when ABTS-{CITY} patterns match.
+     */
+    private function fromRdap(string $ip): ?array
+    {
+        $result = $this->rdap->lookup($ip);
+        if (!$result || (empty($result['state']) && empty($result['city']))) {
+            return null;
+        }
+
+        return [
+            'source'     => 'rdap',
+            'city'       => $result['city'] ?? null,
+            'state'      => $result['state'] ?? null,
+            'country'    => 'India',
+            'confidence' => $result['confidence'] ?? 65,
+            'weight'     => config('detection.signal_weights.rdap', 22),
+            'meta'       => [
+                'network_name' => $result['network_name'] ?? null,
+                'isp_circle'   => $result['isp_circle']   ?? null,
+                'rdap_source'  => $result['source']        ?? null,
             ],
         ];
     }
