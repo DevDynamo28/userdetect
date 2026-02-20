@@ -114,7 +114,7 @@ class SignalFusionService
             'source' => 'cloudflare',
             'city' => $cfCity ? ucwords(strtolower(urldecode($cfCity))) : null,
             'state' => $cfRegion ? ucwords(strtolower(urldecode($cfRegion))) : null,
-            'country' => $cfCountry,
+            'country' => $this->expandCountryCode($cfCountry),
             'latitude' => $cfLat ? (float) $cfLat : null,
             'longitude' => $cfLng ? (float) $cfLng : null,
             'confidence' => $confidence,
@@ -655,5 +655,37 @@ class SignalFusionService
             'fallback_reason' => $fallbackReason,
             'confidence_bucket' => $confidenceBucket,
         ];
+    }
+
+    /**
+     * Expand a 2-letter ISO country code to full name.
+     * Cloudflare sends CF-IPCountry as an ISO code (e.g. "IN"), but the rest
+     * of the system uses full names (e.g. "India") for consistency.
+     */
+    private function expandCountryCode(?string $code): ?string
+    {
+        if (!$code) {
+            return null;
+        }
+
+        $map = [
+            'IN' => 'India',
+            'US' => 'United States',
+            'GB' => 'United Kingdom',
+            'AE' => 'United Arab Emirates',
+            'SG' => 'Singapore',
+            'AU' => 'Australia',
+            'CA' => 'Canada',
+            'DE' => 'Germany',
+            'FR' => 'France',
+            'JP' => 'Japan',
+            'CN' => 'China',
+            'PK' => 'Pakistan',
+            'BD' => 'Bangladesh',
+            'NP' => 'Nepal',
+            'LK' => 'Sri Lanka',
+        ];
+
+        return $map[strtoupper($code)] ?? $code;
     }
 }
