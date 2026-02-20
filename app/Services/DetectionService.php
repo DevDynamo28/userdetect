@@ -364,19 +364,23 @@ class DetectionService
 
     /**
      * Resolve end-user IP from trusted edge headers without relying on browser permissions.
+     *
+     * Priority order:
+     *  1. CF-Connecting-IP  — set by Cloudflare on every request (Worker or standard CDN)
+     *  2. X-Real-IP         — set by some reverse proxies / CF Workers
+     *  3. $request->ip()    — Laravel's X-Forwarded-For parsing (requires TRUSTED_PROXIES=*)
      */
     private function resolveClientIp(Request $request): string
     {
         $fallback = $request->ip();
 
-        $candidates = [];
-        $forwardedByWorker = $request->header('X-Worker-Forwarded') === '1';
-        if ($forwardedByWorker) {
-            $candidates[] = $request->header('CF-Connecting-IP');
-            $candidates[] = $request->header('X-Real-IP');
-        }
-
-        $candidates[] = $fallback;
+        // CF-Connecting-IP is set on all Cloudflare requests, not just CF Worker ones.
+        // X-Real-IP is added by CF Workers or nginx upstream configs.
+        $candidates = [
+            $request->header('CF-Connecting-IP'),
+            $request->header('X-Real-IP'),
+            $fallback,
+        ];
 
         foreach ($candidates as $candidate) {
             if (!$candidate || !filter_var($candidate, FILTER_VALIDATE_IP)) {

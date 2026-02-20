@@ -97,11 +97,22 @@ export default {
         headers.set("CF-Connecting-IP", cfConnectingIp);
         headers.set("X-Real-IP", cfConnectingIp);
 
-        // Inject Cloudflare geo data as custom headers
-        if (cf.city) headers.set("X-CF-City", cf.city);
-        if (cf.region) headers.set("X-CF-Region", cf.region);
+        // Inject Cloudflare geo data as custom headers.
+        // SignalFusionService reads CF-IPCity first, then falls back to X-CF-City,
+        // so we set both names to satisfy the primary check without relying on the fallback.
+        if (cf.city) {
+            headers.set("CF-IPCity", cf.city);
+            headers.set("X-CF-City", cf.city);
+        }
+        if (cf.region) {
+            headers.set("CF-IPRegion", cf.region);
+            headers.set("X-CF-Region", cf.region);
+        }
         if (cf.regionCode) headers.set("X-CF-Region-Code", cf.regionCode);
-        if (cf.country) headers.set("X-CF-Country", cf.country);
+        if (cf.country) {
+            headers.set("CF-IPCountry", cf.country);
+            headers.set("X-CF-Country", cf.country);
+        }
         if (cf.latitude) headers.set("X-CF-Latitude", cf.latitude.toString());
         if (cf.longitude) headers.set("X-CF-Longitude", cf.longitude.toString());
         if (cf.timezone) headers.set("X-CF-Timezone", cf.timezone);

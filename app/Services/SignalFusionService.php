@@ -575,8 +575,15 @@ class SignalFusionService
             return 'no_city_evidence';
         }
 
-        if (count($cityEvidence) === 1 && ($cityEvidence[0]['source'] ?? '') !== 'cloudflare') {
-            return 'single_city_source';
+        // A single city source is only strong enough to skip ensemble when it is Cloudflare
+        // (which has its own GPS-precision geo data) or reverse_dns (ISP hostname is highly
+        // specific). local_geoip alone has a wide accuracy radius for Indian IPs and needs
+        // ensemble corroboration.
+        if (count($cityEvidence) === 1) {
+            $singleSource = $cityEvidence[0]['source'] ?? '';
+            if (!in_array($singleSource, ['cloudflare', 'reverse_dns'], true)) {
+                return 'single_city_source';
+            }
         }
 
         $cityWeights = [];

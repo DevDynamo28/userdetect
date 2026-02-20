@@ -15,6 +15,9 @@ return [
             'enabled' => true,
             'database_path' => storage_path('geoip/GeoLite2-City.mmdb'),
             'maxmind_license_key' => env('MAXMIND_LICENSE_KEY', ''),
+            // GeoLite2 free DB achieves ~65-75% city-level accuracy for India.
+            // The paid GeoIP2 City DB can use 85 here instead.
+            'confidence' => 70,
         ],
         'reverse_dns' => [
             'enabled' => true,
